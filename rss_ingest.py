@@ -656,13 +656,15 @@ def main() -> None:
     )
 
     sources = [normalize_source(r) for r in records if r.get("record_id")]
+    enabled_sources = [s for s in sources if s.get("enabled")]
+    log(f"[RSS] sources total={len(sources)} enabled={len(enabled_sources)}")
     try:
         existing_keys = prefetch_recent_item_keys(tenant_token)
         log(f"[Dedup] prefetched keys: {len(existing_keys)}")
     except Exception as exc:
         log(f"[Dedup] prefetch failed: {exc}")
         existing_keys = set()
-    for source in sources:
+    for source in enabled_sources:
         process_source(source, tenant_token, existing_keys)
 
 
