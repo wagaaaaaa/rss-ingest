@@ -206,5 +206,6 @@ def create_bitable_record(
     resp = http_post(url, headers, body, timeout, retries)
     data = resp.json()
     if data.get("code") != 0:
+        print(f"[Feishu] create record error: {data}", flush=True)
         return False
     return True
