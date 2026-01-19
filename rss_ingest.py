@@ -1,5 +1,6 @@
 ﻿# -*- coding: utf-8 -*-
 import datetime as dt
+import hashlib
 import json
 import re
 import time
@@ -374,8 +375,11 @@ def vectorize_query(embedding: List[float]) -> Optional[float]:
 
 
 def vectorize_upsert(item_key: str, embedding: List[float], metadata: Dict[str, Any]) -> bool:
+    vec_id = hashlib.sha256(item_key.encode("utf-8", errors="ignore")).hexdigest()
+    metadata = dict(metadata)
+    metadata["item_key"] = item_key
     url = f"https://api.cloudflare.com/client/v4/accounts/{config.CF_ACCOUNT_ID}/vectorize/v2/indexes/{config.CF_VECTORIZE_INDEX}/upsert"
-    payload = {"vectors": [{"id": item_key, "values": embedding, "metadata": metadata}]}
+    payload = {"vectors": [{"id": vec_id, "values": embedding, "metadata": metadata}]}
     try:
         cf_post(url, payload, timeout=20, retries=3)
         return True
