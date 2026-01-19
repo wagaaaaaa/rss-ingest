@@ -340,9 +340,13 @@ def cf_embed_text(text: str) -> Optional[List[float]]:
     result = data.get("result") or {}
     items = result.get("data") or result.get("result") or []
     if isinstance(items, list) and items:
-        emb = items[0].get("embedding")
-        if isinstance(emb, list) and emb:
-            return [float(x) for x in emb]
+        first = items[0]
+        if isinstance(first, dict):
+            emb = first.get("embedding")
+            if isinstance(emb, list) and emb:
+                return [float(x) for x in emb]
+        if isinstance(first, list) and first:
+            return [float(x) for x in first]
     log(f"   [Vectorize] embedding response missing data: {data}")
     return None
 
