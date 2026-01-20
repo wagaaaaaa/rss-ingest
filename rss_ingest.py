@@ -348,6 +348,18 @@ def iflow_headers() -> Dict[str, str]:
     return {"Content-Type": "application/json", "Authorization": f"Bearer {config.IFLOW_API_KEY}"}
 
 
+def openai_headers(api_key: str) -> Dict[str, str]:
+    return {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
+
+
+def deepseek_headers() -> Dict[str, str]:
+    return {"Content-Type": "application/json", "Authorization": f"Bearer {config.DEEPSEEK_API_KEY}"}
+
+
+def zhipu_headers() -> Dict[str, str]:
+    return {"Content-Type": "application/json", "Authorization": f"Bearer {config.ZHIPU_API_KEY}"}
+
+
 def cf_headers() -> Dict[str, str]:
     return {"Authorization": f"Bearer {config.CF_API_TOKEN}", "Content-Type": "application/json"}
 
@@ -408,6 +420,18 @@ def extract_json_object(text: str) -> str:
     return t
 
 
+def parse_llm_json(raw_text: str, service: str) -> Optional[Dict[str, Any]]:
+    json_str = extract_json_object(raw_text)
+    if not json_str:
+        notify_parse_error(service, "empty json")
+        return None
+    try:
+        return json.loads(json_str)
+    except json.JSONDecodeError as exc:
+        notify_parse_error(service, str(exc))
+        return None
+
+
 def analyze_with_gemini(article: Dict[str, Any]) -> Dict[str, Any]:
     if not config.GEMINI_API_KEY:
         notify_auth_failure("Gemini", "missing GEMINI_API_KEY")
@@ -461,11 +485,6 @@ def analyze_with_gemini(article: Dict[str, Any]) -> Dict[str, Any]:
     elif last_status_type == "timeout":
         notify_timeout("Gemini", str(last_err) if last_err else "timeout")
     return {"categories": ["调用异常"], "score": 0.0, "summary": str(last_err) if last_err else "", "title_zh": "", "one_liner": "", "points": []}
-
-
-def _parse_llm_json(raw_text: str) -> Dict[str, Any]:
-    json_str = extract_json_object(raw_text)
-    return json.loads(json_str)
 
 
 def analyze_with_iflow(article: Dict[str, Any]) -> Dict[str, Any]:
@@ -530,10 +549,192 @@ def analyze_with_iflow(article: Dict[str, Any]) -> Dict[str, Any]:
     return {"categories": ["调用异常"], "score": 0.0, "summary": str(last_err) if last_err else "", "title_zh": "", "one_liner": "", "points": []}
 
 
+def analyze_with_openai(article: Dict[str, Any]) -> Dict[str, Any]:
+    if not config.OPENAI_API_KEY:
+        notify_auth_failure("OpenAI", "missing OPENAI_API_KEY")
+        return {"categories": ["调用失败"], "score": 0.0, "summary": "missing OPENAI_API_KEY", "title_zh": "", "one_liner": "", "points": []}
+
+    prompt = build_prompt(article)
+    url = f"{config.OPENAI_BASE_URL}/responses"
+    payload = {"model": config.OPENAI_MODEL, "input": prompt}
+
+    last_err: Optional[Exception] = None
+    last_status_type: Optional[str] = None
+    last_status_detail = ""
+    for attempt in range(config.OPENAI_RETRIES):
+        try:
+            resp = requests.post(url, headers=openai_headers(config.OPENAI_API_KEY), json=payload, timeout=config.OPENAI_TIMEOUT)
+            if resp.status_code in (401, 403):
+                notify_auth_failure("OpenAI", response_snippet(resp))
+                return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
+            if resp.status_code in (429, 500, 502, 503, 504):
+                last_status_type = "rate_limit" if resp.status_code == 429 else "server_error"
+                last_status_detail = response_snippet(resp)
+                time.sleep(1.2 * (attempt + 1))
+                continue
+            if resp.status_code != 200:
+                return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
+
+            data = resp.json()
+            raw_text = ""
+            if isinstance(data.get("output_text"), str):
+                raw_text = data.get("output_text", "")
+            if not raw_text:
+                outputs = data.get("output") or []
+                if isinstance(outputs, list):
+                    parts: List[str] = []
+                    for item in outputs:
+                        if not isinstance(item, dict):
+                            continue
+                        if isinstance(item.get("text"), str):
+                            parts.append(item["text"])
+                        content = item.get("content") or []
+                        if isinstance(content, list):
+                            for piece in content:
+                                if isinstance(piece, dict):
+                                    text = piece.get("text")
+                                    if isinstance(text, str):
+                                        parts.append(text)
+                    raw_text = "".join(parts)
+
+            result = parse_llm_json(raw_text, "OpenAI")
+            if result is None:
+                return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
+            return result
+        except Exception as exc:
+            last_err = exc
+            if "timeout" in str(exc).lower():
+                last_status_type = "timeout"
+            time.sleep(1.0 + attempt)
+
+    if last_status_type == "rate_limit":
+        notify_rate_limit("OpenAI", last_status_detail or "HTTP 429")
+    elif last_status_type == "server_error":
+        notify_server_error("OpenAI", last_status_detail or "HTTP 5xx")
+    elif last_status_type == "timeout":
+        notify_timeout("OpenAI", str(last_err) if last_err else "timeout")
+    return {"categories": ["调用异常"], "score": 0.0, "summary": str(last_err) if last_err else "", "title_zh": "", "one_liner": "", "points": []}
+
+
+def analyze_with_deepseek(article: Dict[str, Any]) -> Dict[str, Any]:
+    if not config.DEEPSEEK_API_KEY:
+        notify_auth_failure("DeepSeek", "missing DEEPSEEK_API_KEY")
+        return {"categories": ["调用失败"], "score": 0.0, "summary": "missing DEEPSEEK_API_KEY", "title_zh": "", "one_liner": "", "points": []}
+
+    prompt = build_prompt(article)
+    url = f"{config.DEEPSEEK_BASE_URL}/chat/completions"
+    payload = {
+        "model": config.DEEPSEEK_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "stream": False,
+    }
+
+    last_err: Optional[Exception] = None
+    last_status_type: Optional[str] = None
+    last_status_detail = ""
+    for attempt in range(config.DEEPSEEK_RETRIES):
+        try:
+            resp = requests.post(url, headers=deepseek_headers(), json=payload, timeout=config.DEEPSEEK_TIMEOUT)
+            if resp.status_code in (401, 403):
+                notify_auth_failure("DeepSeek", response_snippet(resp))
+                return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
+            if resp.status_code in (429, 500, 502, 503, 504):
+                last_status_type = "rate_limit" if resp.status_code == 429 else "server_error"
+                last_status_detail = response_snippet(resp)
+                time.sleep(1.2 * (attempt + 1))
+                continue
+            if resp.status_code != 200:
+                return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
+
+            data = resp.json()
+            choices = data.get("choices") or []
+            if not choices:
+                return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
+            message = choices[0].get("message") or {}
+            raw_text = (message.get("content") or "").strip()
+            result = parse_llm_json(raw_text, "DeepSeek")
+            if result is None:
+                return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
+            return result
+        except Exception as exc:
+            last_err = exc
+            if "timeout" in str(exc).lower():
+                last_status_type = "timeout"
+            time.sleep(1.0 + attempt)
+
+    if last_status_type == "rate_limit":
+        notify_rate_limit("DeepSeek", last_status_detail or "HTTP 429")
+    elif last_status_type == "server_error":
+        notify_server_error("DeepSeek", last_status_detail or "HTTP 5xx")
+    elif last_status_type == "timeout":
+        notify_timeout("DeepSeek", str(last_err) if last_err else "timeout")
+    return {"categories": ["调用异常"], "score": 0.0, "summary": str(last_err) if last_err else "", "title_zh": "", "one_liner": "", "points": []}
+
+
+def analyze_with_zhipu(article: Dict[str, Any]) -> Dict[str, Any]:
+    if not config.ZHIPU_API_KEY:
+        notify_auth_failure("Zhipu", "missing ZHIPU_API_KEY")
+        return {"categories": ["调用失败"], "score": 0.0, "summary": "missing ZHIPU_API_KEY", "title_zh": "", "one_liner": "", "points": []}
+
+    prompt = build_prompt(article)
+    url = f"{config.ZHIPU_BASE_URL}/chat/completions"
+    payload = {
+        "model": config.ZHIPU_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+
+    last_err: Optional[Exception] = None
+    last_status_type: Optional[str] = None
+    last_status_detail = ""
+    for attempt in range(config.ZHIPU_RETRIES):
+        try:
+            resp = requests.post(url, headers=zhipu_headers(), json=payload, timeout=config.ZHIPU_TIMEOUT)
+            if resp.status_code in (401, 403):
+                notify_auth_failure("Zhipu", response_snippet(resp))
+                return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
+            if resp.status_code in (429, 500, 502, 503, 504):
+                last_status_type = "rate_limit" if resp.status_code == 429 else "server_error"
+                last_status_detail = response_snippet(resp)
+                time.sleep(1.2 * (attempt + 1))
+                continue
+            if resp.status_code != 200:
+                return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
+
+            data = resp.json()
+            choices = data.get("choices") or []
+            if not choices:
+                return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
+            message = choices[0].get("message") or {}
+            raw_text = (message.get("content") or "").strip()
+            result = parse_llm_json(raw_text, "Zhipu")
+            if result is None:
+                return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
+            return result
+        except Exception as exc:
+            last_err = exc
+            if "timeout" in str(exc).lower():
+                last_status_type = "timeout"
+            time.sleep(1.0 + attempt)
+
+    if last_status_type == "rate_limit":
+        notify_rate_limit("Zhipu", last_status_detail or "HTTP 429")
+    elif last_status_type == "server_error":
+        notify_server_error("Zhipu", last_status_detail or "HTTP 5xx")
+    elif last_status_type == "timeout":
+        notify_timeout("Zhipu", str(last_err) if last_err else "timeout")
+    return {"categories": ["调用异常"], "score": 0.0, "summary": str(last_err) if last_err else "", "title_zh": "", "one_liner": "", "points": []}
+
+
 def analyze_with_llm(article: Dict[str, Any]) -> Dict[str, Any]:
     provider = config.LLM_PROVIDER
     if provider == "iflow":
         return analyze_with_iflow(article)
+    if provider == "openai":
+        return analyze_with_openai(article)
+    if provider == "deepseek":
+        return analyze_with_deepseek(article)
+    if provider == "zhipu":
+        return analyze_with_zhipu(article)
     if provider and provider != "gemini":
         log(f"[LLM] unknown provider={provider}, fallback to gemini")
     return analyze_with_gemini(article)

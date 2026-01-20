@@ -61,7 +61,7 @@ RSS_FIELD_CONTENT_LANGUAGE = "content_language"
 
 DEFAULT_ITEM_ID_STRATEGY = "guid"
 DEFAULT_CONTENT_HASH_ALGO = "md5"
-DEFAULT_FETCH_INTERVAL_MIN = 60
+DEFAULT_FETCH_INTERVAL_MIN = int(os.getenv("DEFAULT_FETCH_INTERVAL_MIN", "180"))
 MAX_ENTRIES_PER_FEED = 200
 NEWS_ITEM_KEY_PREFETCH_LIMIT = 500
 
@@ -94,6 +94,24 @@ IFLOW_BASE_URL = os.getenv("IFLOW_BASE_URL", "https://apis.iflow.cn/v1").rstrip(
 IFLOW_MODEL = os.getenv("IFLOW_MODEL", "qwen3-max")
 IFLOW_TIMEOUT = int(os.getenv("IFLOW_TIMEOUT", "60"))
 IFLOW_RETRIES = int(os.getenv("IFLOW_RETRIES", "3"))
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5")
+OPENAI_TIMEOUT = int(os.getenv("OPENAI_TIMEOUT", "60"))
+OPENAI_RETRIES = int(os.getenv("OPENAI_RETRIES", "3"))
+
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
+DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/")
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+DEEPSEEK_TIMEOUT = int(os.getenv("DEEPSEEK_TIMEOUT", "60"))
+DEEPSEEK_RETRIES = int(os.getenv("DEEPSEEK_RETRIES", "3"))
+
+ZHIPU_API_KEY = os.getenv("ZHIPU_API_KEY", "")
+ZHIPU_BASE_URL = os.getenv("ZHIPU_BASE_URL", "https://open.bigmodel.cn/api/paas/v4").rstrip("/")
+ZHIPU_MODEL = os.getenv("ZHIPU_MODEL", "glm-4.7")
+ZHIPU_TIMEOUT = int(os.getenv("ZHIPU_TIMEOUT", "60"))
+ZHIPU_RETRIES = int(os.getenv("ZHIPU_RETRIES", "3"))
 
 NOTIFY_FIELD_EVENT = os.getenv("NOTIFY_FIELD_EVENT", "事件")
 NOTIFY_FIELD_DETAIL = os.getenv("NOTIFY_FIELD_DETAIL", "详情")

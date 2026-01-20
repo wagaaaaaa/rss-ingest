@@ -1,195 +1,187 @@
-# Feishu RSS Digest
+# 📰 Feishu RSS Digest (Serverless Edition)
 
-把 RSS 源放进飞书多维表，系统会定时抓取并生成“分类、评分、摘要、要点”，自动写回你的飞书新闻主表。你只需要维护源列表，其余交给系统处理。
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python) ![GitHub Actions](https://img.shields.io/badge/Deployment-GitHub%20Actions-2088FF?logo=github-actions) ![Alibaba](https://img.shields.io/badge/LLM-Alibaba%20iFlow-FF6A00?logo=alibabacloud) ![Feishu](https://img.shields.io/badge/Platform-Feishu%20Open-00D6B9?logo=lark)
 
-## 快速开始（10 分钟跑通）
+> **零成本、零服务器、全自动。**
+> 专为飞书/Lark 用户打造的 AI 自动化情报中台。
 
-### 1) 你需要准备的账号
+## 📖 项目简介
 
-- 飞书开放平台（Bitable）
-- LLM（默认 Gemini；可选 iFlow）
-- Cloudflare（可选，用于 Vectorize 近似去重）
+**Feishu RSS Digest** 是一个基于 GitHub Actions 运行的自动化工具，它能将杂乱的 RSS 订阅源转化为**结构化、有价值的情报**，并自动同步到飞书多维表格（Bitable）。
 
-### 2) 你需要设置的 Secrets（GitHub Actions）
+本项目内置了 **LLM 认知引擎**，默认支持 **阿里心流 (iFlow)**，能像人类分析师一样，对每一条资讯进行**评分、分类、提取摘要**，并过滤掉低价值的噪音。同时全面兼容 **DeepSeek**、**OpenAI**、**智谱 AI**、**Gemini** 等主流模型。
 
-在仓库 `Settings → Secrets and variables → Actions` 里新增：
+你无需购买服务器，无需部署 Docker，Fork 本仓库即可拥有一个 7x24 小时工作的“AI 情报分析员”。
 
-基础必填：
-- `FEISHU_APP_ID`
-- `FEISHU_APP_SECRET`
-- `FEISHU_APP_TOKEN`
-- `FEISHU_NEWS_TABLE_ID`
-- `FEISHU_RSS_TABLE_ID`
+## ✨ 核心特性
 
-LLM（二选一）：
-- Gemini：`GEMINI_API_KEY`
-- iFlow：`LLM_PROVIDER=iflow`、`IFLOW_API_KEY`
+* **☁️ Serverless 极简运行**：完全依赖 GitHub Actions 定时任务，无需 VPS，无需运维，**终身免费**。
+* **🧠 多模型驱动**：
+    * **默认**：集成 **阿里心流 (iFlow)**，国内直连，速度极快。
+    * **扩展**：原生支持 **DeepSeek**、**OpenAI**、**智谱 GLM-4**、**Google Gemini**，可按需切换。
+* **🤖 AI 深度清洗**：
+    * **智能评分**：AI 根据内容质量打分，一眼识别爆款。
+    * **一句话摘要**：告别标题党，直击核心观点。
+    * **自动分类**：根据文章内容自动打标签，便于筛选。
+    * **自定义人设**：支持自定义 Prompt，无论是关注 AI、财经还是体育，都能精准适配。
+* **🧹 智能去重 (可选，免费)**：支持基于 [Cloudflare Vectorize](https://dash.cloudflare.com/) 的向量语义去重，精准过滤同质化洗稿内容。
+* **🛡️ 企业级风控**：内置完善的容错机制。鉴权失败、API 限流、网络超时等异常情况，会自动推送到飞书，拒绝“静默失败”。
 
-可选（Vectorize 近似去重）：
-- `CF_API_TOKEN`
-- `CF_ACCOUNT_ID`
-- `CF_VECTORIZE_INDEX`
+## 🚀 快速开始 (Quick Start)
 
-可选（失败提醒记录表）：
-- `FEISHU_NOTIFY_TABLE_ID`
+只需 4 步，即可拥有你的 AI 情报系统。
 
-### 3) 运行方式
+### 1. 创建飞书应用 (Create App)
 
-GitHub Actions（推荐）：
-- 打开 Actions → `rss-ingest` → `Run workflow`
-- 或等待定时触发（见 `.github/workflows/rss-ingest.yml`）
+为了让程序能读写表格，我们需要先创建一个“机器人”。
 
-本地运行：
-```powershell
-pip install -r requirements.txt
-python rss_ingest.py
-```
+1.  前往 [飞书开放平台](https://open.feishu.cn/app) 创建一个**企业自建应用**。
+2.  **开启权限**：在“权限管理”中，搜索并开启 `多维表格` 相关的所有读写权限。
+3.  **发布应用**：在“版本管理与发布”中，创建一个版本并点击发布（**重要：不发布无法调用**）。
+4.  **获取凭证**：在“凭证与基础信息”中复制 `App ID` 和 `App Secret` 备用。
 
-### 4) 你会看到的结果
+### 2. 准备多维表格 (Setup Base)
 
-- “新闻主表”新增记录（标题/摘要/分类/分数/全文等）
-- “RSS 源表”字段被更新（抓取状态与时间）
+1.  **复制模版**：
+    * **[🔗 点击这里获取飞书多维表格模版](https://my.feishu.cn/wiki/O0BNwoGXji4BTtkUU23cJvIcnQf)**
+    * *（该文档内包含模版链接及详细字段说明）*
+2.  **添加机器人进群/表格**：
+    * 打开你复制好的多维表格。
+    * 点击右上角的 **`...` (更多)** -> **`添加应用`**。
+    * 搜索你第 1 步创建的应用名称，点击添加（**重要：否则程序无权写入数据**）。
+3.  **获取 ID**：
+    * 从浏览器地址栏获取 `app_token`（多维表格 ID）和 `table_id`（数据表 ID）。
 
-## 表结构与模板
+### 3. 准备 AI 大脑 (API Setup)
 
-> 建议先创建空表，再按以下字段配置。  
-> [TODO: 贴出“表模板链接”或截图说明]
+本项目默认配置为 **阿里心流 (iFlow)**。
 
-### RSS 源表字段（必须与 `config.py` 字段名一致）
+1.  前往 [iFlow 开放平台](https://platform.iflow.cn/) 申请 API Key。
+2.  **⚠️ 有效期警告：iFlow 的免费 API Key 通常只有 7 天有效期。**
+    * *建议每周重置，或在下方“进阶配置”中切换为 DeepSeek / 智谱 / Gemini 等更稳定的模型。*
 
-- name
-- feed_url
-- type
-- description
-- enabled
-- status
-- last_fetch_time
-- last_fetch_status
-- consecutive_fail_count
-- last_item_guid
-- last_item_pub_time
-- item_id_strategy
-- content_language
+### 4. GitHub 部署 (Deploy)
 
-单选字段建议选项（需与你表里一致）：
-- type：自行维护
-- status：idle / ok / unstable / dead
-- last_fetch_status：success / timeout / http_error / parse_error
-- item_id_strategy：guid / link / title_pubdate / content_hash
-- content_language：zh / en / jp / mixed / other
+1.  **Fork 本仓库**。
+2.  **配置密钥 (Secrets)**：
+    * 进入 `Settings` -> `Secrets and variables` -> `Actions`。
+    * 添加以下 **6 个** 必须变量：
 
-### 新闻主表字段（必须与 `config.py` 字段名一致）
+| 变量名 | 说明 | 获取方式 |
+| :--- | :--- | :--- |
+| `FEISHU_APP_ID` | 飞书应用 ID | 飞书开放平台 |
+| `FEISHU_APP_SECRET` | 飞书应用 Secret | 飞书开放平台 |
+| `FEISHU_APP_TOKEN` | 多维表格 Token | 浏览器地址栏 `base_` 开头 |
+| `FEISHU_RSS_TABLE_ID` | RSS源表 ID | 浏览器地址栏 `tbl` 开头 |
+| `FEISHU_NEWS_TABLE_ID` | 新闻主表 ID | 浏览器地址栏 `tbl` 开头 |
+| `IFLOW_API_KEY` | 阿里 iFlow API Key | iFlow 后台 |
 
-- 标题
-- AI打分
-- 分类
-- 总结
-- 发布时间
-- 来源
-- 全文
-- item_key
+### 5. 启动与使用 (Run)
 
-### 提醒记录表字段（可选）
+1.  **添加 RSS 源**：
+    * 在飞书 **"RSS订阅源"** 表中填入 RSS 链接，并勾选 `Enabled`。
+    * **[🔗 不知道去哪找 RSS？查看我的 RSS 源获取教程](这里换成你知识库的具体文档链接)**
+2.  **手动触发**：
+    * GitHub Actions -> Select Workflow -> Run workflow。
+3.  **查看结果**：见证 AI 帮你打工的时刻！
 
-建议字段：
-- 事件
-- 详情
-- 说明
-- 触发时间
-- 已通知
+---
 
-[TODO: 如果字段名不同，请在下方“环境变量”里说明映射]
+## ⚙️ 进阶配置详解 (Configuration)
 
-## 环境变量配置（完整清单）
+### ?? ?????? (LLM Providers)
 
-### 飞书基础
+**?? A??? OpenAI??? Responses API?**
+| ??? | ?? |
+| :--- | :--- |
+| `LLM_PROVIDER` | `openai` |
+| `OPENAI_API_KEY` | ?? OpenAI API Key |
+| `OPENAI_MODEL` | *(??)* ?? `gpt-5` |
+| `OPENAI_BASE_URL` | *(??)* ?? `https://api.openai.com/v1` |
+> ?????`POST /responses`?Responses API?
 
-- `FEISHU_APP_ID`：飞书 App ID
-- `FEISHU_APP_SECRET`：飞书 App Secret
-- `FEISHU_APP_TOKEN`：Bitable App Token
-- `FEISHU_NEWS_TABLE_ID`：新闻主表 ID
-- `FEISHU_RSS_TABLE_ID`：RSS 源表 ID
+**?? B??? DeepSeek?OpenAI ???**
+| ??? | ?? |
+| :--- | :--- |
+| `LLM_PROVIDER` | `deepseek` |
+| `DEEPSEEK_API_KEY` | ?? DeepSeek API Key |
+| `DEEPSEEK_MODEL` | *(??)* `deepseek-chat` ? `deepseek-reasoner` |
+| `DEEPSEEK_BASE_URL` | *(??)* ?? `https://api.deepseek.com` |
+> ?????`POST /chat/completions`
 
-### LLM（默认 Gemini）
+**?? C??? ?? AI?GLM?OpenAI ???**
+| ??? | ?? |
+| :--- | :--- |
+| `LLM_PROVIDER` | `zhipu` |
+| `ZHIPU_API_KEY` | ???? API Key |
+| `ZHIPU_MODEL` | *(??)* ?? `glm-4.7` ? `glm-4` |
+| `ZHIPU_BASE_URL` | *(??)* ?? `https://open.bigmodel.cn/api/paas/v4/` |
+> ?????`POST /chat/completions`
 
-Gemini：
-- `GEMINI_API_KEY`
-- `GEMINI_MODEL_NAME`（可选，默认 `gemini-3-flash-preview`）
+**?? D??? iFlow?OpenAI ??????**
+| ??? | ?? |
+| :--- | :--- |
+| `LLM_PROVIDER` | `iflow` (??) |
+| `IFLOW_API_KEY` | ?? iFlow API Key |
+| `IFLOW_MODEL` | *(??)* ?? `qwen3-max` |
+| `IFLOW_BASE_URL` | *(??)* ?? `https://apis.iflow.cn/v1` |
 
-iFlow（OpenAI 兼容）：
-- `LLM_PROVIDER=iflow`
-- `IFLOW_API_KEY`
-- `IFLOW_MODEL`（可选，默认 `qwen3-max`）
-- `IFLOW_BASE_URL`（可选，默认 `https://apis.iflow.cn/v1`）
-- `IFLOW_TIMEOUT` / `IFLOW_RETRIES`（可选）
+**??? JSON ????**
+- OpenAI??? Structured Outputs?JSON Schema ???????
+- DeepSeek??? `response_format={"type":"json_object"}`??? prompt ??? ?json? ???????
 
-### 去重（Vectorize，可选）
+---
 
-- `CF_API_TOKEN`
-- `CF_ACCOUNT_ID`
-- `CF_VECTORIZE_INDEX`
-- `CF_VECTORIZE_TOP_K`（可选）
-- `CF_VECTORIZE_SIM_THRESHOLD`（可选）
+### 🎨 自定义 AI 人设 (Custom Prompt)
 
-### 提醒记录（可选）
+**默认的 AI 提示词是专门针对“AI / 科技新闻”优化的。**
+如果你用这个工具来抓取 **财经、体育、娱乐** 类新闻，强烈建议你自定义提示词，否则 AI 的评分和分类可能会很奇怪。
 
-- `FEISHU_NOTIFY_TABLE_ID`
-- `NOTIFY_FIELD_EVENT`（默认 `事件`）
-- `NOTIFY_FIELD_DETAIL`（默认 `详情`）
-- `NOTIFY_FIELD_PLAIN`（默认 `说明`）
-- `NOTIFY_FIELD_TRIGGER_TIME`（默认 `触发时间`）
-- `NOTIFY_FIELD_NOTIFIED`（默认 `已通知`）
+| 变量名 | 说明 |
+| :--- | :--- |
+| `SYSTEM_PROMPT_OVERRIDE` | **自定义系统提示词**。<br>在这里告诉 AI：*"你是一个资深财经分析师，请关注市场动态..."* <br>*(只需填入 Prompt 文本即可，系统会自动替换)* |
 
-## 运行逻辑说明（你关心的点）
+---
 
-- 系统会优先用 `last_item_pub_time` 做增量过滤，避免重复抓取。
-- 主表会预取最近 500 条 `item_key` 做精确去重；如你开启 Vectorize，会再做近似去重。
-- 抓取成功后会回写 RSS 源表的状态与时间字段。
-- LLM 会生成结构化结果（分类/分数/标题/要点）。
+### 🧹 智能去重 (Smart Deduplication)
 
-## LLM 总结提示词
+**这是一个可选的高级功能。**
+开启后，系统会调用 Cloudflare Vectorize 进行**语义去重**（能识别洗稿、同义改写的内容）。
 
-提示词在 `rss_ingest.py` 的 `SYSTEM_PROMPT` 中维护。  
-[TODO: 如果你想在 README 中展示最新版本，可在此贴出]
+**配置步骤：**
 
-## 失败提醒（多维表通知）
+**1. 获取 Cloudflare 凭证**
+登录 [Cloudflare Dashboard](https://dash.cloudflare.com/)，获取 `Account ID` 和 `API Token`（需有 Vectorize 读写权限）。
 
-你可以用“提醒记录表 + 飞书自动化”实现个人提醒。  
-系统会在一次运行中记录首个根因，避免刷屏。
+**2. 配置 GitHub Secrets**
+在仓库 Secrets 中添加以下 3 个变量：
 
-默认触发的提醒类型：
-- 鉴权失败（401/403 或缺 Key）
-- 限流/配额不足（429）
-- 上游服务异常（5xx）
-- 网络超时
-- 输出解析失败
-- 关键配置缺失
+| 变量名 | 说明 | 示例值 |
+| :--- | :--- | :--- |
+| `CF_ACCOUNT_ID` | Cloudflare 账户 ID | `_Your_ACCOUNT_ID_` |
+| `CF_API_TOKEN` | Cloudflare API Token | `_Your_Token_` |
+| `CF_VECTORIZE_INDEX` | 自定义索引名称 | `newsdata_rss` |
 
-## GitHub Actions
+**3. 一键初始化索引 (One-Time Setup)**
+**无需在 Cloudflare 后台手动创建索引**，请按以下步骤操作，让程序自动完成初始化：
+1. 点击仓库上方的 `Actions` 选项卡。
+2. 在左侧列表选择 **`Create Vectorize Index`** (或类似名称的工作流)。
+3. 点击 `Run workflow` 按钮。
+4. 等待运行成功（显示绿勾），即表示向量数据库创建完成。
 
-### 定时任务
+> **⚠️ 注意**：此步骤只需执行一次。初始化成功后，后续的定时任务即可正常使用去重功能。
 
-`rss-ingest` 使用 cron 定时运行，见 `.github/workflows/rss-ingest.yml`。
+---
 
-### 创建 Vectorize 索引
+## ❓ 常见问题 (FAQ)
 
-`create-vectorize-index` 仅需运行一次。  
-[TODO: 若你有固定索引名或维度要求，说明在此处]
+**Q: 为什么运行一周后突然报错？**
+A: 如果你使用的是 **iFlow**，大概率是因为 API Key 超过了 7 天有效期。请登录 iFlow 官网重置 Key。
 
-## FAQ / 排错
+**Q: 401/403 错误？**
+A: 99% 的原因有两个：
+1. 飞书应用**没有点击“发布”**。
+2. 飞书多维表格里**没有添加应用**（见快速开始第 2 步）。
 
-- 401/403：密钥无效/过期/权限不足，更新 Secret。
-- 429：配额不足或请求频率过高，降低频率或检查额度。
-- 5xx：上游服务异常，稍后重试。
-- RSS 403：源站拦截，建议替换源或仅本地运行。
-- 内网 RSS 源：GitHub Actions 无法访问，请禁用或改公网源。
-- 飞书写入失败：检查 `FEISHU_APP_TOKEN` / 表 ID 是否一致。
-
-## 开源许可与贡献
-
-- License: [TODO: 选择 MIT/Apache-2.0 等并补链接]
-- 贡献方式：[TODO: 贡献指南链接或说明]
-
-## 维护者
-
-- [TODO: 你的联系方式或主页链接]
+---
+*Created by [Your Name] - 让信息获取更高效。*
