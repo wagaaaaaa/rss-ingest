@@ -24,7 +24,7 @@
     * **一句话摘要**：告别标题党，直击核心观点。
     * **自动分类**：根据文章内容自动打标签，便于筛选。
     * **自定义人设**：支持自定义 Prompt，无论是关注 AI、财经还是体育，都能精准适配。
-* **🧹 智能去重 (可选)**：支持基于 [Cloudflare Vectorize](https://dash.cloudflare.com/) 的向量语义去重，精准过滤同质化洗稿内容。
+* **🧹 智能去重 (可选，免费)**：支持基于 [Cloudflare Vectorize](https://dash.cloudflare.com/) 的向量语义去重，精准过滤同质化洗稿内容。
 * **🛡️ 企业级风控**：内置完善的容错机制。鉴权失败、API 限流、网络超时等异常情况，会自动推送到飞书，拒绝“静默失败”。
 
 ## 🚀 快速开始 (Quick Start)
@@ -134,15 +134,30 @@
 ### 🧹 智能去重 (Smart Deduplication)
 
 **这是一个可选的高级功能。**
-即使不配置，系统也会根据链接进行精确去重。开启此功能后，系统会使用向量数据库进行**语义去重**（例如：两篇标题不同但内容相似的洗稿文章，会被识别并过滤）。
+开启后，系统会调用 Cloudflare Vectorize 进行**语义去重**（能识别洗稿、同义改写的内容）。
 
-*需前往 [Cloudflare Dashboard](https://dash.cloudflare.com/) 免费开通 Vectorize。*
+**配置步骤：**
 
-| 变量名 | 说明 |
-| :--- | :--- |
-| `CF_ACCOUNT_ID` | Cloudflare 账户 ID |
-| `CF_API_TOKEN` | Cloudflare API Token |
-| `CF_VECTORIZE_INDEX` | 向量索引名称 |
+**1. 获取 Cloudflare 凭证**
+登录 [Cloudflare Dashboard](https://dash.cloudflare.com/)，获取 `Account ID` 和 `API Token`（需有 Vectorize 读写权限）。
+
+**2. 配置 GitHub Secrets**
+在仓库 Secrets 中添加以下 3 个变量：
+
+| 变量名 | 说明 | 示例值 |
+| :--- | :--- | :--- |
+| `CF_ACCOUNT_ID` | Cloudflare 账户 ID | `_Your_ACCOUNT_ID_` |
+| `CF_API_TOKEN` | Cloudflare API Token | `_Your_Token_` |
+| `CF_VECTORIZE_INDEX` | 自定义索引名称 | `newsdata_rss` |
+
+**3. 一键初始化索引 (One-Time Setup)**
+**无需在 Cloudflare 后台手动创建索引**，请按以下步骤操作，让程序自动完成初始化：
+1. 点击仓库上方的 `Actions` 选项卡。
+2. 在左侧列表选择 **`Create Vectorize Index`** (或类似名称的工作流)。
+3. 点击 `Run workflow` 按钮。
+4. 等待运行成功（显示绿勾），即表示向量数据库创建完成。
+
+> **⚠️ 注意**：此步骤只需执行一次。初始化成功后，后续的定时任务即可正常使用去重功能。
 
 ---
 
