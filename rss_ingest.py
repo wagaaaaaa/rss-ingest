@@ -83,6 +83,80 @@ def log(msg: str) -> None:
     print(msg, flush=True)
 
 
+ROOT_CAUSE_RECORDED = False
+NOTIFY_TENANT_TOKEN: Optional[str] = None
+
+
+def set_notify_tenant_token(token: str) -> None:
+    global NOTIFY_TENANT_TOKEN
+    NOTIFY_TENANT_TOKEN = token
+
+
+def truncate_text(text: str, limit: int = 1000) -> str:
+    if len(text) <= limit:
+        return text
+    return text[:limit - 3] + "..."
+
+
+def build_plain_notice(error_type: str) -> str:
+    if error_type == "auth":
+        return "鉴权失败：API Key 无效/过期/权限不足，请更新后重试。"
+    if error_type == "rate_limit":
+        return "触发限流或配额不足：请降低频率或检查配额。"
+    if error_type == "server_error":
+        return "上游服务异常：请稍后重试。"
+    if error_type == "timeout":
+        return "网络超时：请检查网络/代理设置。"
+    if error_type == "parse_error":
+        return "输出格式异常：请检查提示词或更换模型。"
+    return "未知错误：请查看详情并排查配置。"
+
+
+def notify_root_cause(event: str, detail: str, error_type: str = "unknown") -> None:
+    global ROOT_CAUSE_RECORDED
+    if ROOT_CAUSE_RECORDED:
+        return
+    ROOT_CAUSE_RECORDED = True
+
+    if not config.FEISHU_NOTIFY_TABLE_ID:
+        log("[Notify] skipped: missing FEISHU_NOTIFY_TABLE_ID")
+        return
+    if not NOTIFY_TENANT_TOKEN:
+        log("[Notify] skipped: missing tenant token")
+        return
+
+    plain_text = build_plain_notice(error_type)
+    fields = {
+        config.NOTIFY_FIELD_EVENT: event,
+        config.NOTIFY_FIELD_DETAIL: truncate_text(detail.strip() or event),
+        config.NOTIFY_FIELD_PLAIN: plain_text,
+        config.NOTIFY_FIELD_TRIGGER_TIME: int(time.time() * 1000),
+        config.NOTIFY_FIELD_NOTIFIED: False,
+    }
+    ok = create_bitable_record(
+        config.FEISHU_APP_TOKEN,
+        config.FEISHU_NOTIFY_TABLE_ID,
+        NOTIFY_TENANT_TOKEN,
+        fields,
+        config.HTTP_TIMEOUT,
+        config.HTTP_RETRIES,
+    )
+    if not ok:
+        log("[Notify] create record failed")
+
+
+def notify_auth_failure(service: str, detail: str) -> None:
+    notify_root_cause(f"{service} 鉴权失败", detail, "auth")
+
+
+def response_snippet(resp: requests.Response) -> str:
+    try:
+        text = resp.text or ""
+    except Exception:
+        return f"HTTP {resp.status_code}"
+    return f"HTTP {resp.status_code}: {truncate_text(text.strip(), 300)}"
+
+
 def clean_feishu_value(value: Any) -> str:
     if value is None:
         return ""
@@ -233,6 +307,8 @@ def cf_post(url: str, payload: Dict[str, Any], timeout: int, retries: int) -> Di
                 time.sleep(1.2 * (attempt + 1))
                 continue
             data = resp.json()
+            if resp.status_code in (401, 403):
+                notify_auth_failure("Cloudflare", f"CF {response_snippet(resp)}")
             if resp.status_code >= 400:
                 raise RuntimeError(f"CF HTTP {resp.status_code}: {data}")
             return data
@@ -267,6 +343,10 @@ def extract_json_object(text: str) -> str:
 
 
 def analyze_with_gemini(article: Dict[str, Any]) -> Dict[str, Any]:
+    if not config.GEMINI_API_KEY:
+        notify_auth_failure("Gemini", "missing GEMINI_API_KEY")
+        return {"categories": ["调用失败"], "score": 0.0, "summary": "missing GEMINI_API_KEY", "title_zh": "", "one_liner": "", "points": []}
+
     prompt = build_prompt(article)
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
 
@@ -274,7 +354,10 @@ def analyze_with_gemini(article: Dict[str, Any]) -> Dict[str, Any]:
     for attempt in range(config.GEMINI_RETRIES):
         try:
             resp = requests.post(config.GEMINI_API_URL, headers=gemini_headers(), json=payload, timeout=config.GEMINI_TIMEOUT)
-            if resp.status_code in (400, 401, 403):
+            if resp.status_code in (401, 403):
+                notify_auth_failure("Gemini", response_snippet(resp))
+                return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
+            if resp.status_code == 400:
                 return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
             if resp.status_code in (429, 500, 502, 503, 504):
                 time.sleep(1.2 * (attempt + 1))
@@ -302,6 +385,7 @@ def _parse_llm_json(raw_text: str) -> Dict[str, Any]:
 
 def analyze_with_iflow(article: Dict[str, Any]) -> Dict[str, Any]:
     if not config.IFLOW_API_KEY:
+        notify_auth_failure("iFlow", "missing IFLOW_API_KEY")
         return {"categories": ["调用失败"], "score": 0.0, "summary": "missing IFLOW_API_KEY", "title_zh": "", "one_liner": "", "points": []}
 
     prompt = build_prompt(article)
@@ -315,7 +399,10 @@ def analyze_with_iflow(article: Dict[str, Any]) -> Dict[str, Any]:
     for attempt in range(config.IFLOW_RETRIES):
         try:
             resp = requests.post(url, headers=iflow_headers(), json=payload, timeout=config.IFLOW_TIMEOUT)
-            if resp.status_code in (400, 401, 403):
+            if resp.status_code in (401, 403):
+                notify_auth_failure("iFlow", response_snippet(resp))
+                return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
+            if resp.status_code == 400:
                 return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
             if resp.status_code in (429, 500, 502, 503, 504):
                 time.sleep(1.2 * (attempt + 1))
@@ -707,6 +794,7 @@ def main() -> None:
             config.ENABLE_VECTORIZE_DEDUP = False
 
     tenant_token = get_tenant_access_token(config.FEISHU_APP_ID, config.FEISHU_APP_SECRET, config.HTTP_TIMEOUT, config.HTTP_RETRIES)
+    set_notify_tenant_token(tenant_token)
     records = list_bitable_records(
         config.FEISHU_APP_TOKEN,
         config.FEISHU_RSS_TABLE_ID,

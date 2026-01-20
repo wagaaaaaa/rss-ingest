@@ -11,6 +11,7 @@ FEISHU_APP_SECRET = os.getenv("FEISHU_APP_SECRET", "")
 FEISHU_APP_TOKEN = os.getenv("FEISHU_APP_TOKEN", "")
 FEISHU_NEWS_TABLE_ID = os.getenv("FEISHU_NEWS_TABLE_ID", "")
 FEISHU_RSS_TABLE_ID = os.getenv("FEISHU_RSS_TABLE_ID", "")
+FEISHU_NOTIFY_TABLE_ID = os.getenv("FEISHU_NOTIFY_TABLE_ID", "")
 
 # FreshRSS（如不使用可留空）
 FRESHRSS_URL = os.getenv("FRESHRSS_URL", "")
@@ -93,3 +94,9 @@ IFLOW_BASE_URL = os.getenv("IFLOW_BASE_URL", "https://apis.iflow.cn/v1").rstrip(
 IFLOW_MODEL = os.getenv("IFLOW_MODEL", "qwen3-max")
 IFLOW_TIMEOUT = int(os.getenv("IFLOW_TIMEOUT", "60"))
 IFLOW_RETRIES = int(os.getenv("IFLOW_RETRIES", "3"))
+
+NOTIFY_FIELD_EVENT = os.getenv("NOTIFY_FIELD_EVENT", "事件")
+NOTIFY_FIELD_DETAIL = os.getenv("NOTIFY_FIELD_DETAIL", "详情")
+NOTIFY_FIELD_PLAIN = os.getenv("NOTIFY_FIELD_PLAIN", "说明")
+NOTIFY_FIELD_TRIGGER_TIME = os.getenv("NOTIFY_FIELD_TRIGGER_TIME", "触发时间")
+NOTIFY_FIELD_NOTIFIED = os.getenv("NOTIFY_FIELD_NOTIFIED", "已通知")
