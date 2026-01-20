@@ -89,57 +89,141 @@
 
 ## ⚙️ 进阶配置详解 (Configuration)
 
-### ?? ?????? (LLM Providers)
+### 🧠 切换认知引擎 (LLM Providers)
 
-**?? A??? OpenAI??? Responses API?**
-| ??? | ?? |
-| :--- | :--- |
-| `LLM_PROVIDER` | `openai` |
-| `OPENAI_API_KEY` | ?? OpenAI API Key |
-| `OPENAI_MODEL` | *(??)* ?? `gpt-5` |
-| `OPENAI_BASE_URL` | *(??)* ?? `https://api.openai.com/v1` |
-> ?????`POST /responses`?Responses API?
-
-**?? B??? DeepSeek?OpenAI ???**
-| ??? | ?? |
+**选项 A：使用 DeepSeek (性价比推荐 🔥)**
+| 变量名 | 值/说明 |
 | :--- | :--- |
 | `LLM_PROVIDER` | `deepseek` |
-| `DEEPSEEK_API_KEY` | ?? DeepSeek API Key |
-| `DEEPSEEK_MODEL` | *(??)* `deepseek-chat` ? `deepseek-reasoner` |
-| `DEEPSEEK_BASE_URL` | *(??)* ?? `https://api.deepseek.com` |
-> ?????`POST /chat/completions`
+| `DEEPSEEK_API_KEY` | 你的 DeepSeek API Key |
+| `DEEPSEEK_MODEL` | *(选填)* 默认为 `deepseek-chat` |
 
-**?? C??? ?? AI?GLM?OpenAI ???**
-| ??? | ?? |
+**选项 B：使用 OpenAI (兼容性最强)**
+| 变量名 | 值/说明 |
+| :--- | :--- |
+| `LLM_PROVIDER` | `openai` |
+| `OPENAI_API_KEY` | 你的 OpenAI API Key (或中转 Key) |
+| `OPENAI_BASE_URL` | *(选填)* 自定义 API 地址，如 `https://api.one-api.com/v1` |
+
+**选项 C：使用 智谱 AI (GLM)**
+| 变量名 | 值/说明 |
 | :--- | :--- |
 | `LLM_PROVIDER` | `zhipu` |
-| `ZHIPU_API_KEY` | ???? API Key |
-| `ZHIPU_MODEL` | *(??)* ?? `glm-4.7` ? `glm-4` |
-| `ZHIPU_BASE_URL` | *(??)* ?? `https://open.bigmodel.cn/api/paas/v4/` |
-> ?????`POST /chat/completions`
+| `ZHIPU_API_KEY` | 你的智谱 API Key |
+| `ZHIPU_MODEL` | *(选填)* 默认为 `glm-4` |
 
-**?? D??? iFlow?OpenAI ??????**
-| ??? | ?? |
+**选项 D：自定义 iFlow 模型**
+| 变量名 | 值/说明 |
 | :--- | :--- |
-| `LLM_PROVIDER` | `iflow` (??) |
-| `IFLOW_API_KEY` | ?? iFlow API Key |
-| `IFLOW_MODEL` | *(??)* ?? `qwen3-max` |
-| `IFLOW_BASE_URL` | *(??)* ?? `https://apis.iflow.cn/v1` |
-
-**??? JSON ????**
-- OpenAI??? Structured Outputs?JSON Schema ???????
-- DeepSeek??? `response_format={"type":"json_object"}`??? prompt ??? ?json? ???????
+| `LLM_PROVIDER` | `iflow` (默认) |
+| `IFLOW_MODEL` | *(选填)* [点击查看 iFlow 模型列表](https://platform.iflow.cn/models?spm=54878a4d.1234f2fe.0.0.3a525225fWHWjr) |
 
 ---
 
 ### 🎨 自定义 AI 人设 (Custom Prompt)
 
-**默认的 AI 提示词是专门针对“AI / 科技新闻”优化的。**
-如果你用这个工具来抓取 **财经、体育、娱乐** 类新闻，强烈建议你自定义提示词，否则 AI 的评分和分类可能会很奇怪。
+**默认的 AI 提示词是专门针对“AI / 科技 / 商业”领域优化的。**
+如果你用这个工具来抓取 **财经、游戏、体育** 或 **学术论文**，强烈建议你自定义提示词。
 
-| 变量名 | 说明 |
-| :--- | :--- |
-| `SYSTEM_PROMPT_OVERRIDE` | **自定义系统提示词**。<br>在这里告诉 AI：*"你是一个资深财经分析师，请关注市场动态..."* <br>*(只需填入 Prompt 文本即可，系统会自动替换)* |
+**⚠️ 修改红线（必读）：**
+为了保证程序能正常运行，**绝对不要修改** JSON Schema 中的 Key 名称（即 `categories`, `score`, `title_zh`, `one_liner`, `points`）。
+
+#### 📋 深度定制模版 (复制并修改)
+你可以复制下方模版，修改 `{}` 中的内容，然后填入 GitHub Secrets 的 `SYSTEM_PROMPT_OVERRIDE` 变量中。
+
+```text
+# Role
+你是一个资深的 {这里填领域，如：加密货币} 分析师。
+核心思维：{这里填思维方式，如：极度理性、怀疑一切、寻找 Alpha}。
+服务对象：{这里填受众，如：DeFi 深度玩家、高频交易员}。
+记住:你所处的时间为：2026年。
+
+# Protocol
+1. **输出格式**：必须是纯文本的 JSON 字符串。
+   - 严禁使用 Markdown 代码块（如 ```json ... ```）。
+   - 严禁包含任何开场白或结束语。
+2. **语言风格**：
+   - 这里的“中文”指：{这里填语言要求，如：高信噪比、币圈黑话、行研术语}。
+   - 拒绝：翻译腔、公关辞令、正确的废话。
+3. **目标**：为用户节省时间，只提取能辅助决策的高价值信息。
+
+# JSON Schema (严禁修改 Key)
+{
+  "categories": ["Tag1", "Tag2"],  // 见下文分类表，严格限制 1-3 个
+  "score": 0.0,                    // 见下文评分标准 (0.0 - 10.0)
+  "title_zh": "中文标题",
+  "one_liner": "一句话说明这是一篇什么样的文章（<=30字）",
+  "points": ["要点1", "要点2", "..."] 
+}
+
+# 核心指令 (Step-by-Step)
+
+## Step 1: 价值预判 (Scoring)
+请基于“{这里填判断标准，如：对投资获利的参考价值}”打分：
+- **9.0-10.0 (颠覆级)**: {这里填高分标准，如：重大协议漏洞、交易所跑路、百倍币空投}。
+- **7.5-8.9 (高价值)**: {这里填较高分标准，如：头部项目更新、知名 VC 投资}。
+- **5.0-7.4 (一般)**: {这里填一般标准，如：常规运营活动、KOL 喊单}。
+- **0.0-4.9 (噪音)**: {这里填低分标准，如：无合约地址的土狗、纯情绪宣泄}。
+
+## Step 2: 分类定义 (Categories)
+请准确选择 1-3 个标签：
+1. {标签1}
+2. {标签2}
+3. {标签3}
+4. {标签4}
+... (建议列出 10 个左右)
+
+## Step 3: 内容提炼 (Extraction)
+- **title_zh**: 直击痛点的中文标题，不要做标题党。
+- **one_liner**: <=30字。不要复述新闻，而是让我知道这是一篇什么样文章。
+- **points**: 提取 2-4 个关键点。
+  - 格式要求：纯字符串，单条 <=50字。
+  - 必须包含：{关键要素，如：具体金额、时间、数据}。
+  - 遇到低分文章时：直接在 points 里指出“内容空洞，无实质增量”。
+
+# 格式强约束
+- JSON 必须合法：字符串内的双引号请使用 \" 转义。
+- 不要输出 summary 字段。
+- 即使字段为空，也要保留该 Key。
+
+# Few-Shot Examples (强烈建议保留并修改)
+
+**Input:** ({这里填一个高分文章的示例标题/内容})
+**Output:**
+{
+  "categories": ["{对应标签}", "{对应标签}"],
+  "score": 9.5,
+  "title_zh": "{示例标题}",
+  "one_liner": "{示例一句话}",
+  "points": [
+    "{示例要点1}",
+    "{示例要点2}"
+  ]
+}
+
+**Input:** ({这里填一个低分/噪音文章的示例})
+**Output:**
+{
+  "categories": ["{对应标签}"],
+  "score": 2.0,
+  "title_zh": "{示例标题}",
+  "one_liner": "一篇无价值的水文",
+  "points": [
+    "内容空洞：全篇无实质信息。",
+    "建议跳过。"
+  ]
+}
+```
+
+---
+
+### ⏱️ 运行频率控制 (Schedule Control)
+
+**你可以控制 RSS 的抓取冷却时间，避免对源站造成压力或消耗过多 Token。**
+
+| 变量名 | 默认值 | 说明 |
+| :--- | :--- | :--- |
+| `DEFAULT_FETCH_INTERVAL_MIN` | `180` | **抓取间隔控制** (单位：分钟)。<br>系统会检查上次抓取时间，若未超过此间隔，将跳过抓取。<br>*(例如：设为 `60` 代表每小时更新一次；设为 `1440` 代表每天更新一次)* |
 
 ---
 
