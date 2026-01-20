@@ -107,6 +107,9 @@ SYSTEM_PROMPT = """
 }
 """
 
+if config.SYSTEM_PROMPT_OVERRIDE:
+    SYSTEM_PROMPT = config.SYSTEM_PROMPT_OVERRIDE
+
 
 def log(msg: str) -> None:
     print(msg, flush=True)
