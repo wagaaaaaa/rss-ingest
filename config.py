@@ -86,3 +86,10 @@ HTTP_RETRIES = 3
 GEMINI_TIMEOUT = 60
 GEMINI_RETRIES = 3
 FEISHU_MIN_SCORE = 6.0
+
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
+IFLOW_API_KEY = os.getenv("IFLOW_API_KEY", "")
+IFLOW_BASE_URL = os.getenv("IFLOW_BASE_URL", "https://apis.iflow.cn/v1").rstrip("/")
+IFLOW_MODEL = os.getenv("IFLOW_MODEL", "qwen3-max")
+IFLOW_TIMEOUT = int(os.getenv("IFLOW_TIMEOUT", "60"))
+IFLOW_RETRIES = int(os.getenv("IFLOW_RETRIES", "3"))

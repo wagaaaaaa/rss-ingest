@@ -25,7 +25,7 @@ def main() -> None:
     )
 
     items = list_bitable_fields(
-        config.FEISHU_RSS_APP_TOKEN,
+        config.FEISHU_APP_TOKEN,
         config.FEISHU_RSS_TABLE_ID,
         tenant_token,
         config.HTTP_TIMEOUT,
@@ -54,7 +54,7 @@ def main() -> None:
             missing += 1
             continue
         ok = delete_bitable_field(
-            config.FEISHU_RSS_APP_TOKEN,
+            config.FEISHU_APP_TOKEN,
             config.FEISHU_RSS_TABLE_ID,
             tenant_token,
             field_id,

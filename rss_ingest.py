@@ -216,6 +216,10 @@ def gemini_headers() -> Dict[str, str]:
     return {"Content-Type": "application/json", "x-goog-api-key": config.GEMINI_API_KEY}
 
 
+def iflow_headers() -> Dict[str, str]:
+    return {"Content-Type": "application/json", "Authorization": f"Bearer {config.IFLOW_API_KEY}"}
+
+
 def cf_headers() -> Dict[str, str]:
     return {"Authorization": f"Bearer {config.CF_API_TOKEN}", "Content-Type": "application/json"}
 
@@ -289,6 +293,58 @@ def analyze_with_gemini(article: Dict[str, Any]) -> Dict[str, Any]:
             time.sleep(1.0 + attempt)
 
     return {"categories": ["调用异常"], "score": 0.0, "summary": str(last_err) if last_err else "", "title_zh": "", "one_liner": "", "points": []}
+
+
+def _parse_llm_json(raw_text: str) -> Dict[str, Any]:
+    json_str = extract_json_object(raw_text)
+    return json.loads(json_str)
+
+
+def analyze_with_iflow(article: Dict[str, Any]) -> Dict[str, Any]:
+    if not config.IFLOW_API_KEY:
+        return {"categories": ["调用失败"], "score": 0.0, "summary": "missing IFLOW_API_KEY", "title_zh": "", "one_liner": "", "points": []}
+
+    prompt = build_prompt(article)
+    url = f"{config.IFLOW_BASE_URL}/chat/completions"
+    payload = {
+        "model": config.IFLOW_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+
+    last_err: Optional[Exception] = None
+    for attempt in range(config.IFLOW_RETRIES):
+        try:
+            resp = requests.post(url, headers=iflow_headers(), json=payload, timeout=config.IFLOW_TIMEOUT)
+            if resp.status_code in (400, 401, 403):
+                return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
+            if resp.status_code in (429, 500, 502, 503, 504):
+                time.sleep(1.2 * (attempt + 1))
+                continue
+            if resp.status_code != 200:
+                return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
+
+            data = resp.json()
+            choices = data.get("choices") or []
+            if not choices:
+                return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
+            message = choices[0].get("message") or {}
+            raw_text = (message.get("content") or "").strip()
+            result = _parse_llm_json(raw_text)
+            return result
+        except Exception as exc:
+            last_err = exc
+            time.sleep(1.0 + attempt)
+
+    return {"categories": ["调用异常"], "score": 0.0, "summary": str(last_err) if last_err else "", "title_zh": "", "one_liner": "", "points": []}
+
+
+def analyze_with_llm(article: Dict[str, Any]) -> Dict[str, Any]:
+    provider = config.LLM_PROVIDER
+    if provider == "iflow":
+        return analyze_with_iflow(article)
+    if provider and provider != "gemini":
+        log(f"[LLM] unknown provider={provider}, fallback to gemini")
+    return analyze_with_gemini(article)
 
 
 def normalize_points(points: Any) -> List[str]:
@@ -567,7 +623,7 @@ def process_source(
             "source": source.get("name") or source.get("feed_url"),
         }
 
-        analysis = analyze_with_gemini(article)
+        analysis = analyze_with_llm(article)
         categories = analysis.get("categories") or []
         if isinstance(categories, list) and any(c in FAILED_CATEGORIES for c in categories):
             log(f"[Gemini] skipped due to failure category: {categories}")

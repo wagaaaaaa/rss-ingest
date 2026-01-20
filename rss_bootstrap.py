@@ -85,7 +85,7 @@ def build_field_defs() -> List[Dict[str, Any]]:
 
 def ensure_fields(tenant_token: str) -> None:
     existing_items = list_bitable_fields(
-        config.FEISHU_RSS_APP_TOKEN,
+        config.FEISHU_APP_TOKEN,
         config.FEISHU_RSS_TABLE_ID,
         tenant_token,
         config.HTTP_TIMEOUT,
@@ -98,7 +98,7 @@ def ensure_fields(tenant_token: str) -> None:
         if name in existing_names:
             continue
         ok, data = create_bitable_field(
-            config.FEISHU_RSS_APP_TOKEN,
+            config.FEISHU_APP_TOKEN,
             config.FEISHU_RSS_TABLE_ID,
             tenant_token,
             name,
@@ -109,7 +109,7 @@ def ensure_fields(tenant_token: str) -> None:
         if not ok and field_def["type"] != TEXT:
             log(f"[Feishu] create field failed, fallback to text: {name} => {data}")
             ok, data = create_bitable_field(
-                config.FEISHU_RSS_APP_TOKEN,
+                config.FEISHU_APP_TOKEN,
                 config.FEISHU_RSS_TABLE_ID,
                 tenant_token,
                 name,
@@ -125,7 +125,7 @@ def ensure_fields(tenant_token: str) -> None:
 
 def import_subscriptions(tenant_token: str) -> None:
     records = list_bitable_records(
-        config.FEISHU_RSS_APP_TOKEN,
+        config.FEISHU_APP_TOKEN,
         config.FEISHU_RSS_TABLE_ID,
         tenant_token,
         config.HTTP_TIMEOUT,
@@ -167,7 +167,7 @@ def import_subscriptions(tenant_token: str) -> None:
         }
 
         ok = create_bitable_record(
-            config.FEISHU_RSS_APP_TOKEN,
+            config.FEISHU_APP_TOKEN,
             config.FEISHU_RSS_TABLE_ID,
             tenant_token,
             fields,
