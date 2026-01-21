@@ -80,7 +80,7 @@
 
 1.  **添加 RSS 源**：
     * 在飞书 **"RSS订阅源"** 表中填入 RSS 链接，并勾选 `Enabled`。
-    * **[🔗 不知道去哪找 RSS？查看我的 RSS 源获取教程](这里换成你知识库的具体文档链接)**
+    * **[🔗 不知道去哪找 RSS？查看我的 RSS 源获取教程](https://my.feishu.cn/wiki/YruAwGDgKimcE1ky0AOcj3bynEg?fromScene=spaceOverview)**
 2.  **手动触发**：
     * GitHub Actions -> Select Workflow -> Run workflow。
 3.  **查看结果**：见证 AI 帮你打工的时刻！
@@ -268,4 +268,4 @@ A: 99% 的原因有两个：
 2. 飞书多维表格里**没有添加应用**（见快速开始第 2 步）。
 
 ---
-*Created by [Your Name] - 让信息获取更高效。*
+*Created by 阿菜 - 让信息获取更高效。*
