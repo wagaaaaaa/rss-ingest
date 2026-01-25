@@ -1,6 +1,6 @@
 # 📰 Feishu RSS Digest (Serverless Edition)
 
-![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python) ![GitHub Actions](https://img.shields.io/badge/Deployment-GitHub%20Actions-2088FF?logo=github-actions) ![Alibaba](https://img.shields.io/badge/LLM-Alibaba%20iFlow-FF6A00?logo=alibabacloud) ![Feishu](https://img.shields.io/badge/Platform-Feishu%20Open-00D6B9?logo=lark)
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python) ![GitHub Actions](https://img.shields.io/badge/Deployment-GitHub%20Actions-2088FF?logo=github-actions) ![NVIDIA](https://img.shields.io/badge/LLM-NVIDIA%20NIM-76B900?logo=nvidia) ![Feishu](https://img.shields.io/badge/Platform-Feishu%20Open-00D6B9?logo=lark)
 
 > **零成本、零服务器、全自动。**
 > 专为飞书/Lark 用户打造的 AI 自动化情报中台。
@@ -9,16 +9,16 @@
 
 **Feishu RSS Digest** 是一个基于 GitHub Actions 运行的自动化工具，它能将杂乱的 RSS 订阅源转化为**结构化、有价值的情报**，并自动同步到飞书多维表格（Bitable）。
 
-本项目内置了 **LLM 认知引擎**，默认支持 **阿里心流 (iFlow)**，能像人类分析师一样，对每一条资讯进行**评分、分类、提取摘要**，并过滤掉低价值的噪音。同时全面兼容 **DeepSeek**、**OpenAI**、**智谱 AI**、**Gemini** 等主流模型。
+本项目**默认集成 NVIDIA NIM (DeepSeek V3)** 作为认知引擎。依托英伟达强大的推理算力，它能像人类分析师一样，对每一条资讯进行**评分、分类、提取摘要**，并过滤掉低价值的噪音。
 
-你无需购买服务器，无需部署 Docker，Fork 本仓库即可拥有一个 7x24 小时工作的“AI 情报分析员”。
+同时全面兼容 **OpenAI**、**智谱 AI**、**Gemini** 等主流模型。你无需购买服务器，Fork 本仓库即可拥有一个 7x24 小时工作的“AI 情报分析员”。
 
 ## ✨ 核心特性
 
 * **☁️ Serverless 极简运行**：完全依赖 GitHub Actions 定时任务，无需 VPS，无需运维，**终身免费**。
 * **🧠 多模型驱动**：
-    * **默认**：集成 **阿里心流 (iFlow)**，国内直连，速度极快。
-    * **扩展**：原生支持 **DeepSeek**、**OpenAI**、**智谱 GLM-4**、**Google Gemini**，可按需切换。
+    * **默认 (推荐)**：集成 **NVIDIA NIM**，直接调用 **DeepSeek V3** 模型，速度极快且极其稳定。
+    * **扩展**：原生支持 **OpenAI**、**智谱 GLM-4**、**Google Gemini**、**阿里心流**，可按需切换。
 * **🤖 AI 深度清洗**：
     * **智能评分**：AI 根据内容质量打分，一眼识别爆款。
     * **一句话摘要**：告别标题党，直击核心观点。
@@ -54,11 +54,12 @@
 
 ### 3. 准备 AI 大脑 (API Setup)
 
-本项目默认配置为 **阿里心流 (iFlow)**。
+本项目默认配置为 **NVIDIA NIM (DeepSeek V3)**，这目前是性价比最高、最稳定的方案。
 
-1.  前往 [iFlow 开放平台](https://platform.iflow.cn/) 申请 API Key。
-2.  **⚠️ 有效期警告：iFlow 的免费 API Key 通常只有 7 天有效期。**
-    * *建议每周重置，或在下方“进阶配置”中切换为 DeepSeek / 智谱 / Gemini 等更稳定的模型。*
+1.  前往 **[NVIDIA Build - DeepSeek V3](https://build.nvidia.com/deepseek-ai/deepseek-v3.2_2)**。
+2.  点击页面右上角的 **"Get API Key"**。
+3.  注册/登录账号后，生成并复制以 `nvapi-` 开头的 Key。
+    * *注：NVIDIA 目前提供较为充裕的免费 Credits，且不会像某些试用版 Key 那样 7 天过期。*
 
 ### 4. GitHub 部署 (Deploy)
 
@@ -74,13 +75,15 @@
 | `FEISHU_APP_TOKEN` | 多维表格 Token | 浏览器地址栏 `base_` 开头 |
 | `FEISHU_RSS_TABLE_ID` | RSS源表 ID | 浏览器地址栏 `tbl` 开头 |
 | `FEISHU_NEWS_TABLE_ID` | 新闻主表 ID | 浏览器地址栏 `tbl` 开头 |
-| `IFLOW_API_KEY` | 阿里 iFlow API Key | iFlow 后台 |
+| `NVIDIA_API_KEY` | NVIDIA API Key | NVIDIA Build 官网 |
+
+> **提示**：配置了 `NVIDIA_API_KEY` 后，系统会自动将 `LLM_PROVIDER` 默认为 `nvidia`，无需额外设置。
 
 ### 5. 启动与使用 (Run)
 
 1.  **添加 RSS 源**：
     * 在飞书 **"RSS订阅源"** 表中填入 RSS 链接，并勾选 `Enabled`。
-    * **[🔗 不知道去哪找 RSS？查看我的 RSS 源获取教程](这里换成你知识库的具体文档链接)**
+    * **[🔗 不知道去哪找 RSS？查看我的 RSS 源获取教程](https://my.feishu.cn/wiki/YruAwGDgKimcE1ky0AOcj3bynEg?fromScene=spaceOverview)**
 2.  **手动触发**：
     * GitHub Actions -> Select Workflow -> Run workflow。
 3.  **查看结果**：见证 AI 帮你打工的时刻！
@@ -91,32 +94,36 @@
 
 ### 🧠 切换认知引擎 (LLM Providers)
 
-**选项 A：使用 DeepSeek (性价比推荐 🔥)**
-| 变量名 | 值/说明 |
-| :--- | :--- |
-| `LLM_PROVIDER` | `deepseek` |
-| `DEEPSEEK_API_KEY` | 你的 DeepSeek API Key |
-| `DEEPSEEK_MODEL` | *(选填)* 默认为 `deepseek-chat` |
+**默认方案：NVIDIA NIM (DeepSeek)**
+只需配置 `NVIDIA_API_KEY` 即可，系统默认调用 `deepseek-ai/deepseek-v3.2`。
 
-**选项 B：使用 OpenAI (兼容性最强)**
+**选项 A：使用 OpenAI (兼容性最强)**
 | 变量名 | 值/说明 |
 | :--- | :--- |
 | `LLM_PROVIDER` | `openai` |
 | `OPENAI_API_KEY` | 你的 OpenAI API Key (或中转 Key) |
 | `OPENAI_BASE_URL` | *(选填)* 自定义 API 地址，如 `https://api.one-api.com/v1` |
 
-**选项 C：使用 智谱 AI (GLM)**
+**选项 B：使用 智谱 AI (GLM)**
 | 变量名 | 值/说明 |
 | :--- | :--- |
 | `LLM_PROVIDER` | `zhipu` |
 | `ZHIPU_API_KEY` | 你的智谱 API Key |
-| `ZHIPU_MODEL` | *(选填)* 默认为 `glm-4` |
+| `ZHIPU_MODEL` | *(选填)* 默认为 `glm-4.7` |
 
-**选项 D：自定义 iFlow 模型**
+**选项 C：自定义 iFlow 模型**
 | 变量名 | 值/说明 |
 | :--- | :--- |
-| `LLM_PROVIDER` | `iflow` (默认) |
+| `LLM_PROVIDER` | `iflow` |
+| `IFLOW_API_KEY` | 你的 iFlow API Key |
 | `IFLOW_MODEL` | *(选填)* [点击查看 iFlow 模型列表](https://platform.iflow.cn/models?spm=54878a4d.1234f2fe.0.0.3a525225fWHWjr) |
+
+**选项 D：使用 Google Gemini**
+| 变量名 | 值/说明 |
+| :--- | :--- |
+| `LLM_PROVIDER` | `gemini` |
+| `GEMINI_API_KEY` | [点击前往 Google AI Studio 获取 Key](https://aistudio.google.com/app/apikey) |
+| `GEMINI_MODEL_NAME` | *(选填)* 默认为 `gemini-3-flash-preview` (处理长文本速度极快) |
 
 ---
 
@@ -268,4 +275,4 @@ A: 99% 的原因有两个：
 2. 飞书多维表格里**没有添加应用**（见快速开始第 2 步）。
 
 ---
-*Created by [Your Name] - 让信息获取更高效。*
+*Created by 阿菜 - 让信息获取更高效。*
