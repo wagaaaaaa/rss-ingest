@@ -9,7 +9,7 @@
 
 **Feishu RSS Digest** 是一个基于 GitHub Actions 运行的自动化工具，它能将杂乱的 RSS 订阅源转化为**结构化、有价值的情报**，并自动同步到飞书多维表格（Bitable）。
 
-本项目**默认集成 NVIDIA NIM (DeepSeek V3)** 作为认知引擎。依托英伟达强大的推理算力，它能像人类分析师一样，对每一条资讯进行**评分、分类、提取摘要**，并过滤掉低价值的噪音。
+本项目**默认集成 NVIDIA NIM (DeepSeek V3.2)** 作为认知引擎。依托英伟达强大的推理算力，它能像人类分析师一样，对每一条资讯进行**评分、分类、提取摘要**，并过滤掉低价值的噪音。
 
 同时全面兼容 **OpenAI**、**智谱 AI**、**Gemini** 等主流模型。你无需购买服务器，Fork 本仓库即可拥有一个 7x24 小时工作的“AI 情报分析员”。
 
@@ -17,8 +17,8 @@
 
 * **☁️ Serverless 极简运行**：完全依赖 GitHub Actions 定时任务，无需 VPS，无需运维，**终身免费**。
 * **🧠 多模型驱动**：
-    * **默认 (推荐)**：集成 **NVIDIA NIM**，直接调用 **DeepSeek V3** 模型，速度极快且极其稳定。
-    * **扩展**：原生支持 **OpenAI**、**智谱 GLM-4**、**Google Gemini**、**阿里心流**，可按需切换。
+    * **默认 (推荐)**：集成 **NVIDIA NIM**，直接调用 **DeepSeek V3.2** 模型，速度极快且极其稳定。
+    * **扩展**：原生支持 **OpenAI**、**智谱 GLM-4.7**、**Google Gemini**、**阿里心流**，可按需切换。
 * **🤖 AI 深度清洗**：
     * **智能评分**：AI 根据内容质量打分，一眼识别爆款。
     * **一句话摘要**：告别标题党，直击核心观点。
@@ -54,9 +54,9 @@
 
 ### 3. 准备 AI 大脑 (API Setup)
 
-本项目默认配置为 **NVIDIA NIM (DeepSeek V3)**，这目前是性价比最高、最稳定的方案。
+本项目默认配置为 **NVIDIA NIM (DeepSeek V3.2)**，这目前是性价比最高、最稳定的方案。
 
-1.  前往 **[NVIDIA Build - DeepSeek V3](https://build.nvidia.com/deepseek-ai/deepseek-v3.2_2)**。
+1.  前往 **[NVIDIA Build - DeepSeek V3.2](https://build.nvidia.com/deepseek-ai/deepseek-v3.2_2)**。
 2.  点击页面右上角的 **"Get API Key"**。
 3.  注册/登录账号后，生成并复制以 `nvapi-` 开头的 Key。
     * *注：NVIDIA 目前提供较为充裕的免费 Credits，且不会像某些试用版 Key 那样 7 天过期。*
