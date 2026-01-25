@@ -360,6 +360,10 @@ def zhipu_headers() -> Dict[str, str]:
     return {"Content-Type": "application/json", "Authorization": f"Bearer {config.ZHIPU_API_KEY}"}
 
 
+def nvidia_headers() -> Dict[str, str]:
+    return {"Content-Type": "application/json", "Authorization": f"Bearer {config.NVIDIA_API_KEY}"}
+
+
 def cf_headers() -> Dict[str, str]:
     return {"Authorization": f"Bearer {config.CF_API_TOKEN}", "Content-Type": "application/json"}
 
@@ -725,6 +729,65 @@ def analyze_with_zhipu(article: Dict[str, Any]) -> Dict[str, Any]:
     return {"categories": ["调用异常"], "score": 0.0, "summary": str(last_err) if last_err else "", "title_zh": "", "one_liner": "", "points": []}
 
 
+def analyze_with_nvidia(article: Dict[str, Any]) -> Dict[str, Any]:
+    if not config.NVIDIA_API_KEY:
+        notify_auth_failure("NVIDIA", "missing NVIDIA_API_KEY")
+        return {"categories": ["调用失败"], "score": 0.0, "summary": "missing NVIDIA_API_KEY", "title_zh": "", "one_liner": "", "points": []}
+
+    prompt = build_prompt(article)
+    url = "https://integrate.api.nvidia.com/v1/chat/completions"
+    payload: Dict[str, Any] = {
+        "model": "deepseek-ai/deepseek-v3.2",
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 1,
+        "top_p": 0.95,
+        "max_tokens": 8192,
+        "stream": False,
+    }
+    payload["extra_body"] = {"chat_template_kwargs": {"thinking": True}}
+
+    last_err: Optional[Exception] = None
+    last_status_type: Optional[str] = None
+    last_status_detail = ""
+    for attempt in range(3):
+        try:
+            resp = requests.post(url, headers=nvidia_headers(), json=payload, timeout=60)
+            if resp.status_code in (401, 403):
+                notify_auth_failure("NVIDIA", response_snippet(resp))
+                return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
+            if resp.status_code in (429, 500, 502, 503, 504):
+                last_status_type = "rate_limit" if resp.status_code == 429 else "server_error"
+                last_status_detail = response_snippet(resp)
+                time.sleep(1.2 * (attempt + 1))
+                continue
+            if resp.status_code != 200:
+                return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
+
+            data = resp.json()
+            choices = data.get("choices") or []
+            if not choices:
+                return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
+            message = choices[0].get("message") or {}
+            raw_text = (message.get("content") or "").strip()
+            result = parse_llm_json(raw_text, "NVIDIA")
+            if result is None:
+                return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
+            return result
+        except Exception as exc:
+            last_err = exc
+            if "timeout" in str(exc).lower():
+                last_status_type = "timeout"
+            time.sleep(1.0 + attempt)
+
+    if last_status_type == "rate_limit":
+        notify_rate_limit("NVIDIA", last_status_detail or "HTTP 429")
+    elif last_status_type == "server_error":
+        notify_server_error("NVIDIA", last_status_detail or "HTTP 5xx")
+    elif last_status_type == "timeout":
+        notify_timeout("NVIDIA", str(last_err) if last_err else "timeout")
+    return {"categories": ["调用异常"], "score": 0.0, "summary": str(last_err) if last_err else "", "title_zh": "", "one_liner": "", "points": []}
+
+
 def analyze_with_llm(article: Dict[str, Any]) -> Dict[str, Any]:
     provider = config.LLM_PROVIDER
     if provider == "iflow":
@@ -735,6 +798,8 @@ def analyze_with_llm(article: Dict[str, Any]) -> Dict[str, Any]:
         return analyze_with_deepseek(article)
     if provider == "zhipu":
         return analyze_with_zhipu(article)
+    if provider == "nvidia":
+        return analyze_with_nvidia(article)
     if provider and provider != "gemini":
         log(f"[LLM] unknown provider={provider}, fallback to gemini")
     return analyze_with_gemini(article)

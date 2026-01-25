@@ -113,6 +113,8 @@ ZHIPU_MODEL = os.getenv("ZHIPU_MODEL", "glm-4.7")
 ZHIPU_TIMEOUT = int(os.getenv("ZHIPU_TIMEOUT", "60"))
 ZHIPU_RETRIES = int(os.getenv("ZHIPU_RETRIES", "3"))
 
+NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
+
 NOTIFY_FIELD_EVENT = os.getenv("NOTIFY_FIELD_EVENT", "事件")
 NOTIFY_FIELD_DETAIL = os.getenv("NOTIFY_FIELD_DETAIL", "详情")
 NOTIFY_FIELD_PLAIN = os.getenv("NOTIFY_FIELD_PLAIN", "说明")
