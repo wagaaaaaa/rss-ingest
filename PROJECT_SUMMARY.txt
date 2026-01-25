@@ -19,7 +19,6 @@ Feishu RSS Digest 项目说明（概览版）
 - rss_ingest.py：主流程，抓取 + LLM 分析 + 去重 + 写入
 - rss_parser.py：RSS 拉取与解析
 - feishu_client.py：飞书 Bitable API 封装
-- rss_bootstrap.py：初始化 RSS 源表字段、导入订阅（按需）
 - rss_field_cleanup.py：清理旧字段（按需）
 - config.py：全部环境变量与字段映射配置
 

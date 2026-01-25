@@ -13,11 +13,6 @@ FEISHU_NEWS_TABLE_ID = os.getenv("FEISHU_NEWS_TABLE_ID", "")
 FEISHU_RSS_TABLE_ID = os.getenv("FEISHU_RSS_TABLE_ID", "")
 FEISHU_NOTIFY_TABLE_ID = os.getenv("FEISHU_NOTIFY_TABLE_ID", "")
 
-# FreshRSS（如不使用可留空）
-FRESHRSS_URL = os.getenv("FRESHRSS_URL", "")
-FRESHRSS_USERNAME = os.getenv("FRESHRSS_USERNAME", "")
-FRESHRSS_API_PASSWORD = os.getenv("FRESHRSS_API_PASSWORD", "")
-
 # Gemini
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-3-flash-preview")
@@ -88,7 +83,7 @@ GEMINI_TIMEOUT = 60
 GEMINI_RETRIES = 3
 FEISHU_MIN_SCORE = 6.0
 
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "nvidia").strip().lower()
 IFLOW_API_KEY = os.getenv("IFLOW_API_KEY", "")
 IFLOW_BASE_URL = os.getenv("IFLOW_BASE_URL", "https://apis.iflow.cn/v1").rstrip("/")
 IFLOW_MODEL = os.getenv("IFLOW_MODEL", "qwen3-max")
