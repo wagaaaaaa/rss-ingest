@@ -2,7 +2,7 @@ name: rss-ingest
 
 on:
   schedule:
-    - cron: "0 1,4,7,10,13,16,19,22 * * *"
+    - cron: "0 16,19,22,1,4,7,10,13 * * *"
   workflow_dispatch: {}
 
 concurrency:
@@ -28,7 +28,8 @@ jobs:
           FEISHU_APP_TOKEN: ${{ secrets.FEISHU_APP_TOKEN }}
           FEISHU_NEWS_TABLE_ID: ${{ secrets.FEISHU_NEWS_TABLE_ID }}
           FEISHU_RSS_TABLE_ID: ${{ secrets.FEISHU_RSS_TABLE_ID }}
-          LLM_PROVIDER: ${{ secrets.LLM_PROVIDER }}
+          FEISHU_NOTIFY_TABLE_ID: ${{ secrets.FEISHU_NOTIFY_TABLE_ID }}
+          LLM_PROVIDER: ${{ secrets.LLM_PROVIDER || 'nvidia' }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           IFLOW_API_KEY: ${{ secrets.IFLOW_API_KEY }}

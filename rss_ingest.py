@@ -19,8 +19,6 @@ SYSTEM_PROMPT = """
 中英文 AI / 科技 / 商业资讯深度分析师
 核心思维：极度理性、关注“信息增量”、对于低价值内容零容忍。
 服务对象：高认知水平的 AI 创作者、开发者与商业决策者。
-记住:你所处的时间为：2026年 1 月。
-
 # Protocol
 1. **输出格式**：必须是纯文本的 JSON 字符串。
    - 严禁使用 Markdown 代码块（如 ```json ... ```）。
@@ -35,7 +33,7 @@ SYSTEM_PROMPT = """
   "categories": ["Tag1", "Tag2"],  // 见下文分类表，严格限制 1-3 个
   "score": 0.0,                    // 见下文评分标准 (0.0 - 10.0)
   "title_zh": "中文标题",
-  "one_liner": "一句话说明这是一篇什么样的文章（<=30字）",
+  "one_liner": "一句话说明这是一篇什么样的文章（<=30字）(例如：一篇报道 ChatGPT 成人模式进展及未成年人保护问题的科技新闻)",
   "points": ["要点1", "要点2", "..."]   // 见下文要点规范
 }
 
@@ -63,13 +61,13 @@ SYSTEM_PROMPT = """
 11. **生活方式**: 健康/极简/审美
 12. **AI提示词**: 具体的Prompt案例/写法
 
-## Step 3: 内容提炼 (Extraction)
+## Step 3: 内容提炼 (Extraction)，不得编造信息
 - **title_zh**: 直击痛点的中文标题，不要做标题党。
 - **one_liner**: <=30字。一句话告诉我这篇文章讲什么，不要复述新闻，而是让我知道这是一篇什么样文章。
 - **points**: 提取 2-4 个关键点。
   - 格式要求：纯字符串，单条 <=50字。
   - 内容要求：要点摘要：具体内容。
-  - 必须包含：具体数据（如参数量、融资金额）、技术原理、或具体观点。
+  - 内容侧重：具体数据（如参数量、融资金额）、技术原理、或具体观点。
   - 遇到低分文章时：直接在 points 里指出“内容空洞，无实质增量”。
 
 # 格式强约束
@@ -401,14 +399,14 @@ def cf_post(url: str, payload: Dict[str, Any], timeout: int, retries: int) -> Di
 
 
 def build_prompt(article: Dict[str, Any]) -> str:
+    china_tz = dt.timezone(dt.timedelta(hours=8))
+    now = dt.datetime.now(china_tz)
     return f"""{SYSTEM_PROMPT}
 
-现在请你根据上面的要求，分析这篇文章：
+你所处的时间为：{now.year}年{now.month:02d}月
 
-标题：{article.get('title','')}
-
-正文（可能包含HTML）：
-{article.get('content','')}
+title：{article.get('title','')}
+content：{article.get('content','')}
 """
 
 
@@ -520,11 +518,13 @@ def analyze_with_iflow(article: Dict[str, Any]) -> Dict[str, Any]:
                 time.sleep(1.2 * (attempt + 1))
                 continue
             if resp.status_code != 200:
+                log(f"[NVIDIA] bad status: {response_snippet(resp)}")
                 return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
 
             data = resp.json()
             choices = data.get("choices") or []
             if not choices:
+                log(f"[NVIDIA] empty choices: {truncate_text(json.dumps(data, ensure_ascii=False), 300)}")
                 return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
             message = choices[0].get("message") or {}
             raw_text = (message.get("content") or "").strip()
@@ -737,21 +737,20 @@ def analyze_with_nvidia(article: Dict[str, Any]) -> Dict[str, Any]:
     prompt = build_prompt(article)
     url = "https://integrate.api.nvidia.com/v1/chat/completions"
     payload: Dict[str, Any] = {
-        "model": "deepseek-ai/deepseek-v3.2",
+        "model": "qwen/qwen3-next-80b-a3b-instruct",
         "messages": [{"role": "user", "content": prompt}],
-        "temperature": 1,
-        "top_p": 0.95,
-        "max_tokens": 8192,
+        "temperature": 0.6,
+        "top_p": 0.7,
+        "max_tokens": 4096,
         "stream": False,
     }
-    payload["extra_body"] = {"chat_template_kwargs": {"thinking": True}}
 
     last_err: Optional[Exception] = None
     last_status_type: Optional[str] = None
     last_status_detail = ""
     for attempt in range(3):
         try:
-            resp = requests.post(url, headers=nvidia_headers(), json=payload, timeout=60)
+            resp = requests.post(url, headers=nvidia_headers(), json=payload, timeout=300)
             if resp.status_code in (401, 403):
                 notify_auth_failure("NVIDIA", response_snippet(resp))
                 return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
@@ -769,8 +768,15 @@ def analyze_with_nvidia(article: Dict[str, Any]) -> Dict[str, Any]:
                 return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
             message = choices[0].get("message") or {}
             raw_text = (message.get("content") or "").strip()
+            if raw_text:
+                # Drop <think> blocks to keep final JSON only (align with test.py behavior)
+                raw_text = re.sub(r"<think>.*?</think>", "", raw_text, flags=re.S)
+                if "<think>" in raw_text:
+                    raw_text = raw_text.split("<think>", 1)[0]
+                raw_text = raw_text.strip()
             result = parse_llm_json(raw_text, "NVIDIA")
             if result is None:
+                log(f"[NVIDIA] parse failed, raw={truncate_text(raw_text, 300)}")
                 return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}
             return result
         except Exception as exc:
