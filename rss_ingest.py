@@ -1084,7 +1084,7 @@ def process_source(
         analysis = analyze_with_llm(article)
         categories = analysis.get("categories") or []
         if isinstance(categories, list) and any(c in FAILED_CATEGORIES for c in categories):
-            log(f"[Gemini] skipped due to failure category: {categories}")
+            log(f"[LLM:{config.LLM_PROVIDER}] skipped due to failure category: {categories}")
             continue
 
         score = float(analysis.get("score", 0.0) or 0.0)
