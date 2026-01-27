@@ -20,6 +20,8 @@ def load_env_file(path: Path) -> None:
 BASE_DIR = Path(__file__).resolve().parent
 
 # Local env file support (optional)
+load_env_file(BASE_DIR / "rss-ingest-local.env")
+load_env_file(Path(r"F:\coding\rss-ingest-local\rss-ingest-local.env"))
 load_env_file(Path(r"F:\coding\local.env"))
 load_env_file(Path(r"F:\coding\.env"))
 
