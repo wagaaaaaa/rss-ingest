@@ -232,3 +232,11 @@ def create_bitable_record_with_id(
         return False, None
     record = (data.get("data") or {}).get("record") or {}
     return True, record.get("record_id")
+
+
+def send_feishu_webhook(webhook_url: str, text: str, timeout: int, retries: int) -> bool:
+    headers = {"Content-Type": "application/json"}
+    body = {"msg_type": "text", "content": {"text": text}}
+    resp = http_post(webhook_url, headers, body, timeout, retries)
+    data = resp.json()
+    return data.get("code", 0) == 0
