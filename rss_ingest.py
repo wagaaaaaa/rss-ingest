@@ -1655,12 +1655,14 @@ def main() -> None:
         process_source(source, tenant_token, existing_keys, featured_candidates)
 
     if featured_candidates:
+        log(f"[Featured] candidates={len(featured_candidates)} ids={[c.get('record_id') for c in featured_candidates]}")
         prompt = build_featured_prompt(featured_candidates)
         raw_text = call_featured_llm(prompt)
         if not raw_text:
             notify_parse_error("Featured", "empty response")
             return
         featured_ids = parse_featured_ids(raw_text)
+        log(f"[Featured] selected_ids={featured_ids}")
         if featured_ids:
             apply_featured(featured_ids, tenant_token)
 
