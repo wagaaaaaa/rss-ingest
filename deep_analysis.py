@@ -92,11 +92,22 @@ def fetch_featured_records(tenant_token: str, hours: float, limit: int) -> List[
             continue
         if fields.get(field_read):
             continue
-        title = clean_feishu_value(fields.get(field_title)).strip()
+        raw_title = fields.get(field_title)
+        title = clean_feishu_value(raw_title).strip()
+        link = ""
+        if isinstance(raw_title, dict):
+            link = clean_feishu_value(raw_title.get("link")).strip()
         content = clean_feishu_value(fields.get(field_content)).strip()
         if not content:
             continue
-        items.append({"record_id": record.get("record_id"), "title": title, "content": content})
+        items.append(
+            {
+                "record_id": record.get("record_id"),
+                "title": title,
+                "link": link,
+                "content": content,
+            }
+        )
         if len(items) >= limit:
             break
 
@@ -119,7 +130,10 @@ def main() -> int:
         raw = call_featured_llm(prompt)
         if not raw:
             continue
-        text = f"【精选深度分析】\n标题：{item['title']}\n\n{raw.strip()}"
+        header = item["title"]
+        if item.get("link"):
+            header = f"{header}\n{item['link']}"
+        text = f"{header}\n\n{raw.strip()}"
         if args.dry_run:
             print(text)
         else:
