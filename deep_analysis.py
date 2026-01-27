@@ -146,7 +146,7 @@ def main() -> int:
         link = item.get("link") or ""
         text = raw.strip()
         if args.dry_run:
-            print(f"{header}\n{link}\n\n{text}")
+            print(f"{header}\n\n{text}\n\n原文链接: {link}")
         else:
             print("[DeepAnalysis] sending to webhook...")
             ok = send_feishu_webhook_post(
