@@ -5,6 +5,8 @@ import json
 import re
 import sys
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional, Iterable
 
 import requests
@@ -189,6 +191,13 @@ def build_plain_notice(error_type: str) -> str:
     if error_type == "config":
         return "关键配置缺失：请检查 Secrets/环境变量是否完整。"
     return "未知错误：请查看详情并排查配置。"
+
+def render_progress(done: int, total: int, width: int = 20) -> str:
+    if total <= 0:
+        return "0/0 [" + "".ljust(width, ".") + "]"
+    filled = int(width * done / total)
+    return f"{done}/{total} [" + "#" * filled + "." * (width - filled) + "]"
+
 
 
 def notify_root_cause(event: str, detail: str, error_type: str = "unknown") -> None:
