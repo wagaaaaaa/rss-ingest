@@ -472,8 +472,11 @@ def parse_llm_json(raw_text: str, service: str) -> Optional[Dict[str, Any]]:
 
 
 def build_featured_prompt(items: List[Dict[str, str]]) -> str:
+    china_tz = dt.timezone(dt.timedelta(hours=8))
+    now = dt.datetime.now(china_tz)
+    time_line = f"你所处的时间为：{now.year}年{now.month:02d}月"
     payload = {"items": items}
-    return f"{FEATURED_PROMPT}\n# Input\n{json.dumps(payload, ensure_ascii=False)}"
+    return f"{FEATURED_PROMPT}\n{time_line}\n# Input\n{json.dumps(payload, ensure_ascii=False)}"
 
 
 def _post_with_retries(
