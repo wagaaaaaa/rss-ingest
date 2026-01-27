@@ -64,6 +64,10 @@ DEFAULT_PROMPT = r'''# Role: 深度阅读与行动转化专家
 
 ---
 # 输入的新闻/文章内容：
+
+## 重要限制
+1. 不要使用 Markdown 符号（不要用 **、###、-、*、` 等）。
+2. 只输出纯文本，严格按照上述“Output Format”的字面结构。
 '''
 
 
@@ -156,15 +160,15 @@ def main() -> int:
         if not raw:
             continue
         header = item["title"]
-        if item.get("link"):
-            header = f"[{item['title']}]({item['link']})"
+        link = item.get("link") or ""
         text = raw.strip()
         if args.dry_run:
-            print(f"{header}\n\n{text}")
+            print(f"{header}\n{link}\n\n{text}")
         else:
             ok = send_feishu_webhook_post(
                 config.FEISHU_WEBHOOK_URL,
                 header,
+                link,
                 text,
                 config.HTTP_TIMEOUT,
                 config.HTTP_RETRIES,

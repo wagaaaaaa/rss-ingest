@@ -242,19 +242,22 @@ def send_feishu_webhook(webhook_url: str, text: str, timeout: int, retries: int)
     return data.get("code", 0) == 0
 
 
-def send_feishu_webhook_post(webhook_url: str, title: str, content_text: str, timeout: int, retries: int) -> bool:
+def send_feishu_webhook_post(webhook_url: str, title: str, link: str, content_text: str, timeout: int, retries: int) -> bool:
     headers = {"Content-Type": "application/json"}
+    content_blocks = []
+    if title and link:
+        content_blocks.append([{"tag": "a", "text": title, "href": link}])
+    elif title:
+        content_blocks.append([{"tag": "text", "text": title}])
+    if content_text:
+        content_blocks.append([{"tag": "text", "text": content_text}])
     body = {
         "msg_type": "post",
         "content": {
             "post": {
                 "zh_cn": {
                     "title": title,
-                    "content": [
-                        [
-                            {"tag": "text", "text": content_text}
-                        ]
-                    ],
+                    "content": content_blocks,
                 }
             }
         },
