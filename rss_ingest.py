@@ -3,6 +3,7 @@ import datetime as dt
 import hashlib
 import json
 import re
+import sys
 import time
 from typing import Any, Dict, List, Optional
 
@@ -110,7 +111,12 @@ if config.SYSTEM_PROMPT_OVERRIDE:
 
 
 def log(msg: str) -> None:
-    print(msg, flush=True)
+    try:
+        print(msg, flush=True)
+    except UnicodeEncodeError:
+        encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+        safe = msg.encode(encoding, errors="replace").decode(encoding, errors="replace")
+        print(safe, flush=True)
 
 
 ROOT_CAUSE_RECORDED = False
@@ -748,7 +754,7 @@ def analyze_with_nvidia(article: Dict[str, Any]) -> Dict[str, Any]:
     last_err: Optional[Exception] = None
     last_status_type: Optional[str] = None
     last_status_detail = ""
-    for attempt in range(3):
+    for attempt in range(config.NVIDIA_RETRIES):
         try:
             resp = requests.post(url, headers=nvidia_headers(), json=payload, timeout=300)
             if resp.status_code in (401, 403):
@@ -872,6 +878,111 @@ def cf_embed_text(text: str) -> Optional[List[float]]:
     return None
 
 
+def parse_failed_items(raw: Any) -> List[Dict[str, Any]]:
+    if not raw:
+        return []
+    data: Any = raw
+    if isinstance(raw, str):
+        s = raw.strip()
+        if not s:
+            return []
+        try:
+            data = json.loads(s)
+        except Exception:
+            return []
+    if isinstance(data, dict):
+        data = [data]
+    if not isinstance(data, list):
+        return []
+    items: List[Dict[str, Any]] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        item_key = str(item.get("item_key") or "").strip()
+        if not item_key:
+            continue
+        items.append(
+            {
+                "item_key": item_key,
+                "title": str(item.get("title") or ""),
+                "link": str(item.get("link") or ""),
+                "published_ms": int(item.get("published_ms") or 0),
+                "fail_count": int(item.get("fail_count") or 0),
+                "last_error": str(item.get("last_error") or ""),
+                "last_seen_ms": int(item.get("last_seen_ms") or 0),
+                "miss_count": int(item.get("miss_count") or 0),
+            }
+        )
+    return items
+
+
+def serialize_failed_items(items: List[Dict[str, Any]]) -> str:
+    return json.dumps(items, ensure_ascii=False)
+
+
+def upsert_failed_item(
+    items: List[Dict[str, Any]],
+    item_key: str,
+    entry_ts_ms: int,
+    title: str,
+    link: str,
+    reason: str,
+    now_ms: int,
+) -> List[Dict[str, Any]]:
+    for item in items:
+        if item.get("item_key") == item_key:
+            item["fail_count"] = int(item.get("fail_count") or 0) + 1
+            item["last_error"] = reason or item.get("last_error") or ""
+            item["last_seen_ms"] = now_ms
+            item["miss_count"] = 0
+            if title and not item.get("title"):
+                item["title"] = title
+            if link and not item.get("link"):
+                item["link"] = link
+            if entry_ts_ms and not item.get("published_ms"):
+                item["published_ms"] = entry_ts_ms
+            return items
+
+    items.append(
+        {
+            "item_key": item_key,
+            "title": title or "",
+            "link": link or "",
+            "published_ms": entry_ts_ms or 0,
+            "fail_count": 1,
+            "last_error": reason or "",
+            "last_seen_ms": now_ms,
+            "miss_count": 0,
+        }
+    )
+    return items
+
+
+def prune_failed_items(items: List[Dict[str, Any]], now_ms: int) -> List[Dict[str, Any]]:
+    seen: Dict[str, Dict[str, Any]] = {}
+    for item in items:
+        key = item.get("item_key")
+        if not key:
+            continue
+        prev = seen.get(key)
+        if not prev or int(item.get("last_seen_ms") or 0) >= int(prev.get("last_seen_ms") or 0):
+            seen[key] = item
+
+    max_age_ms = config.FAILED_ITEMS_MAX_AGE_DAYS * 24 * 60 * 60 * 1000
+    pruned: List[Dict[str, Any]] = []
+    for item in seen.values():
+        miss_count = int(item.get("miss_count") or 0)
+        if miss_count >= config.FAILED_ITEMS_MAX_MISS:
+            continue
+        seen_ms = int(item.get("last_seen_ms") or item.get("published_ms") or 0)
+        if seen_ms and now_ms - seen_ms > max_age_ms:
+            continue
+        pruned.append(item)
+
+    pruned.sort(key=lambda x: int(x.get("last_seen_ms") or 0), reverse=True)
+    return pruned[: config.FAILED_ITEMS_MAX]
+
+
 def vectorize_query(embedding: List[float]) -> Optional[float]:
     url = f"https://api.cloudflare.com/client/v4/accounts/{config.CF_ACCOUNT_ID}/vectorize/v2/indexes/{config.CF_VECTORIZE_INDEX}/query"
     payload = {"vector": embedding, "topK": config.CF_VECTORIZE_TOP_K}
@@ -935,6 +1046,7 @@ def normalize_source(record: Dict[str, Any]) -> Dict[str, Any]:
         "item_id_strategy": item_id_strategy,
         "content_hash_algo": config.DEFAULT_CONTENT_HASH_ALGO,
         "consecutive_fail_count": consecutive_fail,
+        "failed_items": fields.get(config.RSS_FIELD_FAILED_ITEMS),
     }
 
 
@@ -1063,9 +1175,109 @@ def process_source(
     if config.MAX_ENTRIES_PER_FEED and len(entries) > config.MAX_ENTRIES_PER_FEED:
         entries = entries[: config.MAX_ENTRIES_PER_FEED]
 
+    failed_items = parse_failed_items(source.get("failed_items"))
+    entry_map: Dict[str, Dict[str, Any]] = {}
+    for entry in entries:
+        entry_key = build_item_key(entry, source.get("item_id_strategy"), source.get("content_hash_algo"))
+        if entry_key:
+            entry_map[entry_key] = entry
+
     latest_pub_ms = 0
     latest_key = ""
     new_count = 0
+    processed_keys: set = set()
+
+    if failed_items:
+        retry_budget = config.FAILED_ITEMS_RETRY_LIMIT
+        updated_failed_items: List[Dict[str, Any]] = []
+        for item in failed_items:
+            item_key = item.get("item_key") or ""
+            if not item_key:
+                continue
+            entry = entry_map.get(item_key)
+            if entry is None:
+                item["miss_count"] = int(item.get("miss_count") or 0) + 1
+                item["last_seen_ms"] = now_ms
+                updated_failed_items.append(item)
+                continue
+            if item_key in existing_keys:
+                processed_keys.add(item_key)
+                continue
+            if retry_budget <= 0:
+                updated_failed_items.append(item)
+                continue
+            retry_budget -= 1
+
+            entry_ts = entry_published_ts(entry)
+            entry_ts_ms = entry_ts * 1000 if entry_ts else 0
+            article = {
+                "title": entry.get("title") or "",
+                "content": entry_text_content(entry),
+                "link": entry.get("link") or "",
+                "published": entry_ts,
+                "source": source.get("name") or source.get("feed_url"),
+            }
+
+            analysis = analyze_with_llm(article)
+            categories = analysis.get("categories") or []
+            if isinstance(categories, list) and any(c in FAILED_CATEGORIES for c in categories):
+                upsert_failed_item(
+                    updated_failed_items,
+                    item_key,
+                    entry_ts_ms,
+                    article.get("title") or "",
+                    article.get("link") or "",
+                    "llm_failed",
+                    now_ms,
+                )
+                processed_keys.add(item_key)
+                continue
+
+            score = float(analysis.get("score", 0.0) or 0.0)
+            if score >= config.FEISHU_MIN_SCORE:
+                emb_vec = None
+                if config.ENABLE_VECTORIZE_DEDUP:
+                    embed_text = build_embedding_text(article, analysis)
+                    emb_vec = cf_embed_text(embed_text)
+                    if emb_vec:
+                        best_sim = vectorize_query(emb_vec)
+                        if best_sim is not None and best_sim >= config.CF_VECTORIZE_SIM_THRESHOLD:
+                            log(f"[Vectorize] skip similar={best_sim:.3f} title={article.get('title','')}")
+                            existing_keys.add(item_key)
+                            processed_keys.add(item_key)
+                            continue
+                    else:
+                        log("[Vectorize] embedding unavailable, fallback to exact dedup only")
+
+                fields = build_news_fields(article, analysis, item_key)
+                ok = create_bitable_record(
+                    config.FEISHU_APP_TOKEN,
+                    config.FEISHU_NEWS_TABLE_ID,
+                    tenant_token,
+                    fields,
+                    config.HTTP_TIMEOUT,
+                    config.HTTP_RETRIES,
+                )
+                if not ok:
+                    log(f"[Feishu] create record failed: {article.get('title','')}")
+                else:
+                    if config.ENABLE_VECTORIZE_DEDUP and emb_vec:
+                        metadata = {
+                            "title": article.get("title") or "",
+                            "source": article.get("source") or "",
+                            "published": entry_ts or 0,
+                        }
+                        vectorize_upsert(item_key, emb_vec, metadata)
+
+            existing_keys.add(item_key)
+            processed_keys.add(item_key)
+            new_count += 1
+
+            if entry_ts_ms > latest_pub_ms:
+                latest_pub_ms = entry_ts_ms
+                latest_key = item_key
+
+        failed_items = prune_failed_items(updated_failed_items, now_ms)
 
     for entry in entries:
         entry_ts = entry_published_ts(entry)
@@ -1075,6 +1287,8 @@ def process_source(
 
         item_key = build_item_key(entry, source.get("item_id_strategy"), source.get("content_hash_algo"))
         if not item_key:
+            continue
+        if item_key in processed_keys:
             continue
         if item_key in existing_keys:
             continue
@@ -1144,6 +1358,7 @@ def process_source(
         update_fields[config.RSS_FIELD_LAST_ITEM_PUB_TIME] = latest_pub_ms
     if latest_key:
         update_fields[config.RSS_FIELD_LAST_ITEM_GUID] = latest_key
+    update_fields[config.RSS_FIELD_FAILED_ITEMS] = serialize_failed_items(failed_items)
 
     update_bitable_record_fields(
         config.FEISHU_APP_TOKEN,

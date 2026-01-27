@@ -2,7 +2,26 @@
 import os
 from pathlib import Path
 
+
+def load_env_file(path: Path) -> None:
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                name, value = line.split("=", 1)
+                name = name.strip()
+                value = value.strip().strip('"').strip("'")
+                os.environ.setdefault(name, value)
+    except FileNotFoundError:
+        pass
+
 BASE_DIR = Path(__file__).resolve().parent
+
+# Local env file support (optional)
+load_env_file(Path(r"F:\coding\local.env"))
+load_env_file(Path(r"F:\coding\.env"))
 
 FEISHU_APP_ID = os.getenv("FEISHU_APP_ID", "")
 FEISHU_APP_SECRET = os.getenv("FEISHU_APP_SECRET", "")
@@ -53,6 +72,7 @@ RSS_FIELD_LAST_ITEM_GUID = "last_item_guid"
 RSS_FIELD_LAST_ITEM_PUB_TIME = "last_item_pub_time"
 RSS_FIELD_ITEM_ID_STRATEGY = "item_id_strategy"
 RSS_FIELD_CONTENT_LANGUAGE = "content_language"
+RSS_FIELD_FAILED_ITEMS = "failed_items"
 
 DEFAULT_ITEM_ID_STRATEGY = "guid"
 DEFAULT_CONTENT_HASH_ALGO = "md5"
@@ -80,33 +100,38 @@ HTTP_TIMEOUT = 20
 HTTP_RETRIES = 3
 
 GEMINI_TIMEOUT = 60
-GEMINI_RETRIES = 3
+GEMINI_RETRIES = 10
 FEISHU_MIN_SCORE = 6.0
+FAILED_ITEMS_MAX = int(os.getenv("FAILED_ITEMS_MAX", "50"))
+FAILED_ITEMS_RETRY_LIMIT = int(os.getenv("FAILED_ITEMS_RETRY_LIMIT", "5"))
+FAILED_ITEMS_MAX_AGE_DAYS = int(os.getenv("FAILED_ITEMS_MAX_AGE_DAYS", "7"))
+FAILED_ITEMS_MAX_MISS = int(os.getenv("FAILED_ITEMS_MAX_MISS", "3"))
+NVIDIA_RETRIES = int(os.getenv("NVIDIA_RETRIES", "10"))
 
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "nvidia").strip().lower()
 IFLOW_API_KEY = os.getenv("IFLOW_API_KEY", "")
 IFLOW_BASE_URL = os.getenv("IFLOW_BASE_URL", "https://apis.iflow.cn/v1").rstrip("/")
 IFLOW_MODEL = os.getenv("IFLOW_MODEL", "qwen3-max")
 IFLOW_TIMEOUT = int(os.getenv("IFLOW_TIMEOUT", "60"))
-IFLOW_RETRIES = int(os.getenv("IFLOW_RETRIES", "3"))
+IFLOW_RETRIES = int(os.getenv("IFLOW_RETRIES", "10"))
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5")
 OPENAI_TIMEOUT = int(os.getenv("OPENAI_TIMEOUT", "60"))
-OPENAI_RETRIES = int(os.getenv("OPENAI_RETRIES", "3"))
+OPENAI_RETRIES = int(os.getenv("OPENAI_RETRIES", "10"))
 
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/")
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 DEEPSEEK_TIMEOUT = int(os.getenv("DEEPSEEK_TIMEOUT", "60"))
-DEEPSEEK_RETRIES = int(os.getenv("DEEPSEEK_RETRIES", "3"))
+DEEPSEEK_RETRIES = int(os.getenv("DEEPSEEK_RETRIES", "10"))
 
 ZHIPU_API_KEY = os.getenv("ZHIPU_API_KEY", "")
 ZHIPU_BASE_URL = os.getenv("ZHIPU_BASE_URL", "https://open.bigmodel.cn/api/paas/v4").rstrip("/")
 ZHIPU_MODEL = os.getenv("ZHIPU_MODEL", "glm-4.7")
 ZHIPU_TIMEOUT = int(os.getenv("ZHIPU_TIMEOUT", "60"))
-ZHIPU_RETRIES = int(os.getenv("ZHIPU_RETRIES", "3"))
+ZHIPU_RETRIES = int(os.getenv("ZHIPU_RETRIES", "10"))
 
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
 
