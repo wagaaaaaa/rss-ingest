@@ -5,7 +5,12 @@ from pathlib import Path
 from typing import Dict, List
 
 import config
-from feishu_client import get_tenant_access_token, list_bitable_records, send_feishu_webhook, update_bitable_record_fields
+from feishu_client import (
+    get_tenant_access_token,
+    list_bitable_records,
+    send_feishu_webhook_post,
+    update_bitable_record_fields,
+)
 from rss_ingest import clean_feishu_value, call_featured_llm
 
 
@@ -132,12 +137,18 @@ def main() -> int:
             continue
         header = item["title"]
         if item.get("link"):
-            header = f"{header}\n{item['link']}"
-        text = f"{header}\n\n{raw.strip()}"
+            header = f"[{item['title']}]({item['link']})"
+        text = raw.strip()
         if args.dry_run:
-            print(text)
+            print(f"{header}\n\n{text}")
         else:
-            ok = send_feishu_webhook(config.FEISHU_WEBHOOK_URL, text, config.HTTP_TIMEOUT, config.HTTP_RETRIES)
+            ok = send_feishu_webhook_post(
+                config.FEISHU_WEBHOOK_URL,
+                header,
+                text,
+                config.HTTP_TIMEOUT,
+                config.HTTP_RETRIES,
+            )
             if not ok:
                 print(f"[Feishu] webhook send failed: {item['record_id']}")
             else:

@@ -240,3 +240,25 @@ def send_feishu_webhook(webhook_url: str, text: str, timeout: int, retries: int)
     resp = http_post(webhook_url, headers, body, timeout, retries)
     data = resp.json()
     return data.get("code", 0) == 0
+
+
+def send_feishu_webhook_post(webhook_url: str, title: str, content_text: str, timeout: int, retries: int) -> bool:
+    headers = {"Content-Type": "application/json"}
+    body = {
+        "msg_type": "post",
+        "content": {
+            "post": {
+                "zh_cn": {
+                    "title": title,
+                    "content": [
+                        [
+                            {"tag": "text", "text": content_text}
+                        ]
+                    ],
+                }
+            }
+        },
+    }
+    resp = http_post(webhook_url, headers, body, timeout, retries)
+    data = resp.json()
+    return data.get("code", 0) == 0
