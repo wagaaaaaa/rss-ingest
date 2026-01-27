@@ -62,6 +62,14 @@ def fetch_featured_records(tenant_token: str, hours: float, limit: int) -> List[
     field_featured = config.NEWS_FIELD_FEATURED
     field_title = config.NEWS_FIELD_TITLE
     field_content = config.NEWS_FIELD_FULL_CONTENT
+    field_distance = "\u8ddd\u4eca"  # 距今
+
+    filter_obj = {
+        "conjunction": "and",
+        "conditions": [
+            {"field_name": field_distance, "operator": "isLessEqual", "value": [hours]},
+        ],
+    }
 
     # Fetch recent records and filter locally (avoid date filter issues)
     records = list_bitable_records(
@@ -72,7 +80,8 @@ def fetch_featured_records(tenant_token: str, hours: float, limit: int) -> List[
         config.HTTP_RETRIES,
         page_size=200,
         max_pages=5,
-        sort=[{"field_name": config.NEWS_FIELD_CREATED_TIME, "order": "desc"}],
+        filter_obj=filter_obj,
+        sort=[{"field_name": field_distance, "order": "asc"}],
     )
 
     items: List[Dict[str, str]] = []
