@@ -10,7 +10,13 @@ from typing import Any, Dict, List, Optional
 import requests
 
 import config
-from feishu_client import create_bitable_record, get_tenant_access_token, list_bitable_records, update_bitable_record_fields
+from feishu_client import (
+    create_bitable_record,
+    create_bitable_record_with_id,
+    get_tenant_access_token,
+    list_bitable_records,
+    update_bitable_record_fields,
+)
 from rss_parser import build_item_key, entry_published_ts, entry_text_content, fetch_feed
 
 FAILED_CATEGORIES = {"调用失败", "调用异常", "解析失败", "JSON解析失败", "异常"}
@@ -108,6 +114,31 @@ SYSTEM_PROMPT = """
 
 if config.SYSTEM_PROMPT_OVERRIDE:
     SYSTEM_PROMPT = config.SYSTEM_PROMPT_OVERRIDE
+
+FEATURED_PROMPT = """
+# Role
+你是一个服务于“超级个体”和“一人公司”的商业效率顾问。你的客户关注如何利用 AI 工具降低成本、提高产出、获取流量和变现，而不关心底层技术实现。
+
+# Task
+分析输入的一组资讯，筛选出对“一人公司”运营最有价值的信息。
+
+# Screening Logic (三层漏斗)
+1. **✅ 必选 (High Value - 应用与SOP):**
+   - **SOP 化:** 包含可直接复制的工作流、提示词框架 (Prompt Framework)、自动化方案。
+   - **业务红利:** 新的流量机会 (如平台算法变更)、新的变现模式、极低成本的获客/生产工具。
+   - **实用技巧:** 能立即提升 AI 输出质量的非代码技巧 (如“煤气灯提示法”)。
+   - **商业警示:** 直接影响个体户账号安全、合规性或资金流的风险。
+
+2. **❌ 必删 (Reject - 纯技术与噪音):**
+   - **开发者视角:** 纯代码实现 (除非是低代码)、架构争论、协议漏洞细节。
+   - **企业级新闻:** 大厂并购、高管变动、财报分析 (除非涉及价格战)。
+   - **宏观噪音:** 政治新闻、学术论文、概念性发布会 (无实物)。
+
+# Output Format
+{
+  "featured_ids": ["record_id_1", "record_id_2"]
+}
+"""
 
 
 def log(msg: str) -> None:
@@ -438,6 +469,190 @@ def parse_llm_json(raw_text: str, service: str) -> Optional[Dict[str, Any]]:
     except json.JSONDecodeError as exc:
         notify_parse_error(service, str(exc))
         return None
+
+
+def build_featured_prompt(items: List[Dict[str, str]]) -> str:
+    payload = {"items": items}
+    return f"{FEATURED_PROMPT}\n# Input\n{json.dumps(payload, ensure_ascii=False)}"
+
+
+def _post_with_retries(
+    url: str,
+    headers: Dict[str, str],
+    payload: Dict[str, Any],
+    timeout: int,
+    retries: int,
+    service: str,
+    parse_text,
+) -> Optional[str]:
+    last_err: Optional[Exception] = None
+    last_status_type: Optional[str] = None
+    last_status_detail = ""
+    for attempt in range(retries):
+        try:
+            resp = requests.post(url, headers=headers, json=payload, timeout=timeout)
+            if resp.status_code in (401, 403):
+                notify_auth_failure(service, response_snippet(resp))
+                return None
+            if resp.status_code in (429, 500, 502, 503, 504):
+                last_status_type = "rate_limit" if resp.status_code == 429 else "server_error"
+                last_status_detail = response_snippet(resp)
+                time.sleep(1.2 * (attempt + 1))
+                continue
+            if resp.status_code != 200:
+                return None
+            try:
+                return parse_text(resp)
+            except Exception as exc:
+                notify_parse_error(service, str(exc))
+                return None
+        except Exception as exc:
+            last_err = exc
+            if "timeout" in str(exc).lower():
+                last_status_type = "timeout"
+            time.sleep(1.0 + attempt)
+
+    if last_status_type == "rate_limit":
+        notify_rate_limit(service, last_status_detail or "HTTP 429")
+    elif last_status_type == "server_error":
+        notify_server_error(service, last_status_detail or "HTTP 5xx")
+    elif last_status_type == "timeout":
+        notify_timeout(service, str(last_err) if last_err else "timeout")
+    return None
+
+
+def call_featured_llm(prompt: str) -> Optional[str]:
+    provider = config.LLM_PROVIDER
+    service = f"Featured:{provider}"
+    known = {"openai", "gemini", "iflow", "deepseek", "zhipu", "nvidia"}
+    if not provider:
+        provider = "gemini"
+        service = f"Featured:{provider}"
+    elif provider not in known:
+        log(f"[LLM] unknown provider={provider}, fallback to gemini")
+        provider = "gemini"
+        service = f"Featured:{provider}"
+
+    if provider == "openai":
+        if not config.OPENAI_API_KEY:
+            notify_auth_failure("OpenAI", "missing OPENAI_API_KEY")
+            return None
+        url = f"{config.OPENAI_BASE_URL}/responses"
+        headers = openai_headers(config.OPENAI_API_KEY)
+        payload = {"model": config.OPENAI_MODEL, "input": prompt}
+
+        def parse_text(resp: requests.Response) -> str:
+            data = resp.json()
+            return data["output"][0]["content"][0]["text"]
+
+        return _post_with_retries(url, headers, payload, config.OPENAI_TIMEOUT, config.OPENAI_RETRIES, service, parse_text)
+
+    if provider == "gemini":
+        if not config.GEMINI_API_KEY:
+            notify_auth_failure("Gemini", "missing GEMINI_API_KEY")
+            return None
+        url = config.GEMINI_API_URL
+        headers = gemini_headers()
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+
+        def parse_text(resp: requests.Response) -> str:
+            data = resp.json()
+            parts = data["candidates"][0]["content"]["parts"]
+            return "".join(p.get("text", "") for p in parts).strip()
+
+        return _post_with_retries(url, headers, payload, config.GEMINI_TIMEOUT, config.GEMINI_RETRIES, service, parse_text)
+
+    if provider == "iflow":
+        if not config.IFLOW_API_KEY:
+            notify_auth_failure("iFlow", "missing IFLOW_API_KEY")
+            return None
+        url = f"{config.IFLOW_BASE_URL}/chat/completions"
+        headers = iflow_headers()
+        payload = {"model": config.IFLOW_MODEL, "messages": [{"role": "user", "content": prompt}]}
+
+        def parse_text(resp: requests.Response) -> str:
+            data = resp.json()
+            return data["choices"][0]["message"]["content"]
+
+        return _post_with_retries(url, headers, payload, config.IFLOW_TIMEOUT, config.IFLOW_RETRIES, service, parse_text)
+
+    if provider == "deepseek":
+        if not config.DEEPSEEK_API_KEY:
+            notify_auth_failure("DeepSeek", "missing DEEPSEEK_API_KEY")
+            return None
+        url = f"{config.DEEPSEEK_BASE_URL}/chat/completions"
+        headers = deepseek_headers()
+        payload = {"model": config.DEEPSEEK_MODEL, "messages": [{"role": "user", "content": prompt}]}
+
+        def parse_text(resp: requests.Response) -> str:
+            data = resp.json()
+            return data["choices"][0]["message"]["content"]
+
+        return _post_with_retries(url, headers, payload, config.DEEPSEEK_TIMEOUT, config.DEEPSEEK_RETRIES, service, parse_text)
+
+    if provider == "zhipu":
+        if not config.ZHIPU_API_KEY:
+            notify_auth_failure("Zhipu", "missing ZHIPU_API_KEY")
+            return None
+        url = f"{config.ZHIPU_BASE_URL}/chat/completions"
+        headers = zhipu_headers()
+        payload = {"model": config.ZHIPU_MODEL, "messages": [{"role": "user", "content": prompt}]}
+
+        def parse_text(resp: requests.Response) -> str:
+            data = resp.json()
+            return data["choices"][0]["message"]["content"]
+
+        return _post_with_retries(url, headers, payload, config.ZHIPU_TIMEOUT, config.ZHIPU_RETRIES, service, parse_text)
+
+    if provider == "nvidia":
+        if not config.NVIDIA_API_KEY:
+            notify_auth_failure("NVIDIA", "missing NVIDIA_API_KEY")
+            return None
+        url = "https://integrate.api.nvidia.com/v1/chat/completions"
+        headers = nvidia_headers()
+        payload = {
+            "model": "qwen/qwen3-next-80b-a3b-instruct",
+            "messages": [{"role": "user", "content": prompt}],
+        }
+
+        def parse_text(resp: requests.Response) -> str:
+            data = resp.json()
+            return data["choices"][0]["message"]["content"]
+
+        return _post_with_retries(url, headers, payload, 300, config.NVIDIA_RETRIES, service, parse_text)
+
+    return None
+
+
+def parse_featured_ids(raw_text: str, service: str = "Featured") -> List[str]:
+    json_str = extract_json_object(raw_text)
+    if not json_str:
+        notify_parse_error(service, "empty json")
+        return []
+    try:
+        data = json.loads(json_str)
+    except json.JSONDecodeError as exc:
+        notify_parse_error(service, str(exc))
+        return []
+    ids = data.get("featured_ids") or []
+    if not isinstance(ids, list):
+        return []
+    return [str(x) for x in ids if x]
+
+
+def apply_featured(record_ids: List[str], tenant_token: str) -> None:
+    if not record_ids:
+        return
+    for record_id in record_ids:
+        update_bitable_record_fields(
+            config.FEISHU_APP_TOKEN,
+            config.FEISHU_NEWS_TABLE_ID,
+            tenant_token,
+            record_id,
+            {config.NEWS_FIELD_FEATURED: True},
+            config.HTTP_TIMEOUT,
+            config.HTTP_RETRIES,
+        )
 
 
 def analyze_with_gemini(article: Dict[str, Any]) -> Dict[str, Any]:
@@ -1122,6 +1337,7 @@ def process_source(
     source: Dict[str, Any],
     tenant_token: str,
     existing_keys: set,
+    featured_candidates: List[Dict[str, str]],
 ) -> None:
     if not source.get("feed_url"):
         return
@@ -1250,7 +1466,7 @@ def process_source(
                         log("[Vectorize] embedding unavailable, fallback to exact dedup only")
 
                 fields = build_news_fields(article, analysis, item_key)
-                ok = create_bitable_record(
+                ok, record_id = create_bitable_record_with_id(
                     config.FEISHU_APP_TOKEN,
                     config.FEISHU_NEWS_TABLE_ID,
                     tenant_token,
@@ -1268,6 +1484,14 @@ def process_source(
                             "published": entry_ts or 0,
                         }
                         vectorize_upsert(item_key, emb_vec, metadata)
+                    if record_id:
+                        featured_candidates.append(
+                            {
+                                "record_id": record_id,
+                                "标题": clean_feishu_value(fields.get(config.NEWS_FIELD_TITLE)).strip(),
+                                "总结": clean_feishu_value(fields.get(config.NEWS_FIELD_SUMMARY)).strip(),
+                            }
+                        )
 
             existing_keys.add(item_key)
             processed_keys.add(item_key)
@@ -1323,7 +1547,7 @@ def process_source(
                     log("[Vectorize] embedding unavailable, fallback to exact dedup only")
 
             fields = build_news_fields(article, analysis, item_key)
-            ok = create_bitable_record(
+            ok, record_id = create_bitable_record_with_id(
                 config.FEISHU_APP_TOKEN,
                 config.FEISHU_NEWS_TABLE_ID,
                 tenant_token,
@@ -1341,6 +1565,14 @@ def process_source(
                         "published": entry_ts or 0,
                     }
                     vectorize_upsert(item_key, emb_vec, metadata)
+                if record_id:
+                    featured_candidates.append(
+                        {
+                            "record_id": record_id,
+                            "标题": clean_feishu_value(fields.get(config.NEWS_FIELD_TITLE)).strip(),
+                            "总结": clean_feishu_value(fields.get(config.NEWS_FIELD_SUMMARY)).strip(),
+                        }
+                    )
         existing_keys.add(item_key)
         new_count += 1
 
@@ -1415,8 +1647,19 @@ def main() -> None:
     except Exception as exc:
         log(f"[Dedup] prefetch failed: {exc}")
         existing_keys = set()
+    featured_candidates: List[Dict[str, str]] = []
     for source in enabled_sources:
-        process_source(source, tenant_token, existing_keys)
+        process_source(source, tenant_token, existing_keys, featured_candidates)
+
+    if featured_candidates:
+        prompt = build_featured_prompt(featured_candidates)
+        raw_text = call_featured_llm(prompt)
+        if not raw_text:
+            notify_parse_error("Featured", "empty response")
+            return
+        featured_ids = parse_featured_ids(raw_text)
+        if featured_ids:
+            apply_featured(featured_ids, tenant_token)
 
 
 if __name__ == "__main__":
