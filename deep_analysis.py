@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, List
 
 import config
-from feishu_client import get_tenant_access_token, list_bitable_records, send_feishu_webhook
+from feishu_client import get_tenant_access_token, list_bitable_records, send_feishu_webhook, update_bitable_record_fields
 from rss_ingest import clean_feishu_value, call_featured_llm
 
 
@@ -60,6 +60,7 @@ def parse_args() -> argparse.Namespace:
 
 def fetch_featured_records(tenant_token: str, hours: float, limit: int) -> List[Dict[str, str]]:
     field_featured = config.NEWS_FIELD_FEATURED
+    field_read = config.NEWS_FIELD_READ
     field_title = config.NEWS_FIELD_TITLE
     field_content = config.NEWS_FIELD_FULL_CONTENT
     field_distance = "\u8ddd\u4eca"  # 距今
@@ -88,6 +89,8 @@ def fetch_featured_records(tenant_token: str, hours: float, limit: int) -> List[
     for record in records:
         fields = record.get("fields") or {}
         if not fields.get(field_featured):
+            continue
+        if fields.get(field_read):
             continue
         title = clean_feishu_value(fields.get(field_title)).strip()
         content = clean_feishu_value(fields.get(field_content)).strip()
@@ -123,6 +126,16 @@ def main() -> int:
             ok = send_feishu_webhook(config.FEISHU_WEBHOOK_URL, text, config.HTTP_TIMEOUT, config.HTTP_RETRIES)
             if not ok:
                 print(f"[Feishu] webhook send failed: {item['record_id']}")
+            else:
+                update_bitable_record_fields(
+                    config.FEISHU_APP_TOKEN,
+                    config.FEISHU_NEWS_TABLE_ID,
+                    tenant_token,
+                    item["record_id"],
+                    {config.NEWS_FIELD_READ: True},
+                    config.HTTP_TIMEOUT,
+                    config.HTTP_RETRIES,
+                )
     return 0
 
 
