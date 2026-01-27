@@ -79,6 +79,7 @@ def fetch_featured_records(tenant_token: str, hours: float, limit: int) -> List[
     }
 
     # Fetch recent records and filter locally (avoid date filter issues)
+    print(f"[DeepAnalysis] fetching records: 距今<= {hours}h, limit={limit}")
     records = list_bitable_records(
         config.FEISHU_APP_TOKEN,
         config.FEISHU_NEWS_TABLE_ID,
@@ -117,6 +118,7 @@ def fetch_featured_records(tenant_token: str, hours: float, limit: int) -> List[
         if len(items) >= limit:
             break
 
+    print(f"[DeepAnalysis] matched items={len(items)}")
     return items
 
 
@@ -126,15 +128,19 @@ def main() -> int:
         raise SystemExit("Missing FEISHU_WEBHOOK_URL")
 
     tenant_token = get_tenant_access_token(config.FEISHU_APP_ID, config.FEISHU_APP_SECRET, config.HTTP_TIMEOUT, config.HTTP_RETRIES)
+    print("[DeepAnalysis] got tenant token")
     items = fetch_featured_records(tenant_token, args.hours, args.limit)
     if not items:
         print("No featured records found.")
         return 0
 
     for item in items:
+        print(f"[DeepAnalysis] processing: {item['record_id']} title={item['title']}")
         prompt = build_deep_analysis_prompt(item["content"])
+        print("[DeepAnalysis] calling LLM...")
         raw = call_featured_llm(prompt)
         if not raw:
+            print("[DeepAnalysis] LLM returned empty response")
             continue
         header = item["title"]
         link = item.get("link") or ""
@@ -142,6 +148,7 @@ def main() -> int:
         if args.dry_run:
             print(f"{header}\n{link}\n\n{text}")
         else:
+            print("[DeepAnalysis] sending to webhook...")
             ok = send_feishu_webhook_post(
                 config.FEISHU_WEBHOOK_URL,
                 header,
@@ -153,6 +160,7 @@ def main() -> int:
             if not ok:
                 print(f"[Feishu] webhook send failed: {item['record_id']}")
             else:
+                print("[DeepAnalysis] webhook sent, marking 已读")
                 update_bitable_record_fields(
                     config.FEISHU_APP_TOKEN,
                     config.FEISHU_NEWS_TABLE_ID,
