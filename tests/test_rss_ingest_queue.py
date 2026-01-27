@@ -14,3 +14,14 @@ def test_collect_queue_items_skips_existing_keys():
     existing = {"a"}
     out = collect_queue_items(items, existing)
     assert [i["item_key"] for i in out] == ["b"]
+
+
+from rss_ingest import split_sources_and_queue
+
+
+def test_split_sources_and_queue_returns_queue():
+    sources = [{"feed_url": "x", "enabled": False, "record_id": "r1"}]
+    queue, source_states, stats = split_sources_and_queue(sources, existing_keys=set(), tenant_token="t")
+    assert isinstance(queue, list)
+    assert isinstance(source_states, dict)
+    assert isinstance(stats, dict)
