@@ -38,6 +38,9 @@ FEISHU_WEBHOOK_URL = os.getenv("FEISHU_WEBHOOK_URL", "")
 # Gemini
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-3-flash-preview")
+# Per-task overrides (optional)
+GEMINI_MODEL_NAME_SUMMARY = os.getenv("GEMINI_MODEL_NAME_SUMMARY", GEMINI_MODEL_NAME)
+GEMINI_MODEL_NAME_PRO = os.getenv("GEMINI_MODEL_NAME_PRO", GEMINI_MODEL_NAME)
 GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_NAME}:generateContent"
 
 # Cloudflare Vectorize + Workers AI

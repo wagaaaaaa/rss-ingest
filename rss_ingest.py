@@ -398,6 +398,10 @@ def gemini_headers() -> Dict[str, str]:
     return {"Content-Type": "application/json", "x-goog-api-key": config.GEMINI_API_KEY}
 
 
+def gemini_api_url(model_name: str) -> str:
+    return f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+
+
 def iflow_headers() -> Dict[str, str]:
     return {"Content-Type": "application/json", "Authorization": f"Bearer {config.IFLOW_API_KEY}"}
 
@@ -573,7 +577,7 @@ def call_featured_llm(prompt: str) -> Optional[str]:
         if not config.GEMINI_API_KEY:
             notify_auth_failure("Gemini", "missing GEMINI_API_KEY")
             return None
-        url = config.GEMINI_API_URL
+        url = gemini_api_url(config.GEMINI_MODEL_NAME_PRO)
         headers = gemini_headers()
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
 
@@ -690,7 +694,8 @@ def analyze_with_gemini(article: Dict[str, Any]) -> Dict[str, Any]:
     last_status_detail = ""
     for attempt in range(config.GEMINI_RETRIES):
         try:
-            resp = requests.post(config.GEMINI_API_URL, headers=gemini_headers(), json=payload, timeout=config.GEMINI_TIMEOUT)
+            url = gemini_api_url(config.GEMINI_MODEL_NAME_SUMMARY)
+            resp = requests.post(url, headers=gemini_headers(), json=payload, timeout=config.GEMINI_TIMEOUT)
             if resp.status_code in (401, 403):
                 notify_auth_failure("Gemini", response_snippet(resp))
                 return {"categories": ["调用失败"], "score": 0.0, "summary": "", "title_zh": "", "one_liner": "", "points": []}

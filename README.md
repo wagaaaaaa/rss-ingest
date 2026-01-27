@@ -123,7 +123,9 @@
 | :--- | :--- |
 | `LLM_PROVIDER` | `gemini` |
 | `GEMINI_API_KEY` | [点击前往 Google AI Studio 获取 Key](https://aistudio.google.com/app/apikey) |
-| `GEMINI_MODEL_NAME` | *(选填)* 默认为 `gemini-3-flash-preview` (处理长文本速度极快) |
+| `GEMINI_MODEL_NAME` | *(??)* ??????? |
+| `GEMINI_MODEL_NAME_SUMMARY` | *(??)* ????????? `GEMINI_MODEL_NAME` |
+| `GEMINI_MODEL_NAME_PRO` | *(??)* ??/????????? `GEMINI_MODEL_NAME` |
 
 ---
 
