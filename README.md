@@ -285,3 +285,20 @@ A: 99% 的原因有两个：
 - 只对新增记录勾选“精选”，不会自动取消已勾选记录。
 - 依赖新闻表中的字段“精选”为勾选框 (Checkbox)。
 - 输出格式仅使用 `featured_ids`（记录 ID 列表）。
+
+---
+
+### 🧠 精选深度分析 (Deep Analysis)
+
+**功能：** 每天定时读取“精选”记录，用“全文”生成「总结 + 深度思考」，并通过飞书 Webhook 推送。
+
+**配置：**
+- `FEISHU_WEBHOOK_URL`：飞书群机器人 webhook
+- (可选) `DEEP_ANALYSIS_PROMPT_OVERRIDE`：自定义深度分析提示词
+
+**手动运行：**
+```
+python deep_analysis.py --hours 12 --limit 20
+```
+
+**定时建议：** 每天 08:00 和 20:00 运行一次。
