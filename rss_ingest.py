@@ -5,7 +5,7 @@ import json
 import re
 import sys
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Iterable
 
 import requests
 
@@ -163,6 +163,16 @@ def truncate_text(text: str, limit: int = 1000) -> str:
     if len(text) <= limit:
         return text
     return text[:limit - 3] + "..."
+
+
+def collect_queue_items(items: Iterable[dict], existing_keys: set) -> list:
+    out = []
+    for item in items:
+        key = item.get("item_key")
+        if not key or key in existing_keys:
+            continue
+        out.append(item)
+    return out
 
 
 def build_plain_notice(error_type: str) -> str:
