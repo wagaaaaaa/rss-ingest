@@ -1,4 +1,9 @@
-﻿from deep_analysis import build_deep_analysis_prompt
+import os
+import sys
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from deep_analysis import build_deep_analysis_prompt
 
 
 def test_build_deep_analysis_prompt_includes_time():
