@@ -5,7 +5,7 @@ import json
 import re
 import sys
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 import requests
 
@@ -117,6 +117,23 @@ def log(msg: str) -> None:
         encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
         safe = msg.encode(encoding, errors="replace").decode(encoding, errors="replace")
         print(safe, flush=True)
+
+
+def collect_queue_items(items: Iterable[dict], existing_keys: set) -> list:
+    out = []
+    for item in items:
+        key = item.get("item_key")
+        if not key or key in existing_keys:
+            continue
+        out.append(item)
+    return out
+
+
+def render_progress(done: int, total: int, width: int = 20) -> str:
+    if total <= 0:
+        return "0/0 [" + "".ljust(width, ".") + "]"
+    filled = int(width * done / total)
+    return f"{done}/{total} [" + "#" * filled + "." * (width - filled) + "]"
 
 
 ROOT_CAUSE_RECORDED = False
