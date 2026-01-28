@@ -92,6 +92,42 @@
 
 ## ⚙️ 进阶配置详解 (Configuration)
 
+### ✅ 新增能力：并发 + 精选（最短说明）
+
+- **并发**：`LLM_CONCURRENCY`（默认 `4`），在 GitHub Actions → Settings → Secrets and variables → Actions → **Variables** 中添加即可覆盖。  
+- **精选**：默认**开启**（当本次有新增记录时执行）。精选失败/解析失败**不会阻塞**主流程，只记录日志；如需关闭，可把 `FEATURED_PROMPT` 设为空字符串。  
+- **FEATURED_PROMPT**：可覆盖默认精选提示词。  
+  - GitHub Variables 里多行写法：用 `\\n` 连接多行（例如 `Line1\\nLine2`）。  
+  - 或者写成单行简化版提示词。  
+- **默认模型**：`LLM_PROVIDER` 默认 `nvidia`（qwen）。
+
+---
+
+### 🧾 环境变量清单（必填 / 可选）
+
+**必填（否则无法运行）**
+- `FEISHU_APP_ID`：飞书应用 ID  
+- `FEISHU_APP_SECRET`：飞书应用 Secret  
+- `FEISHU_APP_TOKEN`：Bitable App Token  
+- `FEISHU_RSS_TABLE_ID`：RSS 源表 ID  
+- `FEISHU_NEWS_TABLE_ID`：新闻表 ID  
+- `NVIDIA_API_KEY`：NVIDIA NIM Key（默认 `LLM_PROVIDER=nvidia`）
+
+**常用可选**
+- `LLM_PROVIDER`：切换模型提供方（默认 `nvidia`）  
+- `LLM_CONCURRENCY`：并发数（默认 `4`）  
+- `FEATURED_PROMPT`：覆盖精选提示词（默认内置模板）  
+- `SYSTEM_PROMPT_OVERRIDE`：覆盖主分析提示词  
+- `PROGRESS_BAR_WIDTH`：进度条宽度（默认 `20`）  
+- `CF_ACCOUNT_ID` / `CF_API_TOKEN` / `CF_VECTORIZE_INDEX`：开启向量去重  
+- `DEFAULT_FETCH_INTERVAL_MIN`：抓取间隔（默认 `180`）
+
+**GitHub Actions 配置位置**
+- `Settings → Secrets and variables → Actions → Secrets`（敏感信息，如 Key）  
+- `Settings → Secrets and variables → Actions → Variables`（非敏感配置，如并发/提示词）
+
+---
+
 ### 🧠 切换认知引擎 (LLM Providers)
 
 **默认方案：NVIDIA NIM (qwen/qwen3-next-80b-a3b-instruct)**
