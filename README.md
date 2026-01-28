@@ -96,9 +96,7 @@
 
 - **并发**：`LLM_CONCURRENCY`（默认 `4`），在 GitHub Actions → Settings → Secrets and variables → Actions → **Variables** 中添加即可覆盖。  
 - **精选**：默认**开启**（当本次有新增记录时执行）。精选失败/解析失败**不会阻塞**主流程，只记录日志；如需关闭，可把 `FEATURED_PROMPT` 设为空字符串。  
-- **FEATURED_PROMPT**：可覆盖默认精选提示词。  
-  - GitHub Variables 里多行写法：用 `\\n` 连接多行（例如 `Line1\\nLine2`）。  
-  - 或者写成单行简化版提示词。  
+- **FEATURED_PROMPT**：覆盖精选提示词；多行在 GitHub Variables 里用 `\n` 拼接或写成单行简化版。
 - **默认模型**：`LLM_PROVIDER` 默认 `nvidia`（qwen）。
 
 ---
@@ -159,9 +157,9 @@
 | :--- | :--- |
 | `LLM_PROVIDER` | `gemini` |
 | `GEMINI_API_KEY` | [点击前往 Google AI Studio 获取 Key](https://aistudio.google.com/app/apikey) |
-| `GEMINI_MODEL_NAME` | *(??)* ??????? |
-| `GEMINI_MODEL_NAME_SUMMARY` | *(??)* ????????? `GEMINI_MODEL_NAME` |
-| `GEMINI_MODEL_NAME_PRO` | *(??)* ??/????????? `GEMINI_MODEL_NAME` |
+| `GEMINI_MODEL_NAME` | (可选) 默认为 gemini-3-flash-preview |
+| `GEMINI_MODEL_NAME_SUMMARY` | (可选) 摘要模型，默认回落到 GEMINI_MODEL_NAME |
+| `GEMINI_MODEL_NAME_PRO` | (可选) 精选/高质量模型，默认回落到 GEMINI_MODEL_NAME |
 
 ---
 
@@ -258,9 +256,6 @@
     "建议跳过。"
   ]
 }
-```
-
----
 
 ### ⏱️ 运行频率控制 (Schedule Control)
 
@@ -272,17 +267,19 @@
 
 ---
 
-### ?? LLM ???? (Parallel LLM)
+### 🧠 并发 LLM (Parallel LLM)
 
-**?????**
-| ??? | ??? | ?? |
+**配置项**
+
+| 变量 | 默认值 | 说明 |
 | :--- | :--- | :--- |
-| `LLM_CONCURRENCY` | `4` | LLM ??????????? |
-| `PROGRESS_BAR_WIDTH` | `20` | ?????????? |
+| `LLM_CONCURRENCY` | `4` | LLM 并发数（线程数） |
+| `PROGRESS_BAR_WIDTH` | `20` | 进度条宽度 |
 
-**???**
-- ????????????????? LLM?
-- ?????????????/?????
+**说明**
+
+- 并发只影响处理速度，不改变结果逻辑。
+- 日志会显示处理进度，不影响主流程。
 
 ---
 
@@ -337,20 +334,3 @@ A: 99% 的原因有两个：
 - 只对新增记录勾选“精选”，不会自动取消已勾选记录。
 - 依赖新闻表中的字段“精选”为勾选框 (Checkbox)。
 - 输出格式仅使用 `featured_ids`（记录 ID 列表）。
-
----
-
-### 🧠 精选深度分析 (Deep Analysis)
-
-**功能：** 每天定时读取“精选”记录，用“全文”生成「总结 + 深度思考」，并通过飞书 Webhook 推送。
-
-**配置：**
-- `FEISHU_WEBHOOK_URL`：飞书群机器人 webhook
-- (可选) `DEEP_ANALYSIS_PROMPT_OVERRIDE`：自定义深度分析提示词
-
-**手动运行：**
-```
-python deep_analysis.py --hours 12 --limit 20
-```
-
-**定时建议：** 每天 08:00 和 20:00 运行一次。
