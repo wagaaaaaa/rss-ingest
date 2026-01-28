@@ -4,13 +4,21 @@ import hashlib
 import json
 import re
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, Iterable, List, Optional
 
 import requests
 
 import config
-from feishu_client import create_bitable_record, get_tenant_access_token, list_bitable_records, update_bitable_record_fields
+from feishu_client import (
+    create_bitable_record,
+    create_bitable_record_with_id,
+    get_tenant_access_token,
+    list_bitable_records,
+    update_bitable_record_fields,
+)
 from rss_parser import build_item_key, entry_published_ts, entry_text_content, fetch_feed
 
 FAILED_CATEGORIES = {"调用失败", "调用异常", "解析失败", "JSON解析失败", "异常"}
@@ -108,6 +116,31 @@ SYSTEM_PROMPT = """
 
 if config.SYSTEM_PROMPT_OVERRIDE:
     SYSTEM_PROMPT = config.SYSTEM_PROMPT_OVERRIDE
+
+FEATURED_PROMPT_DEFAULT = """
+# Role
+你是一个服务于“超级个体”和“一人公司”的商业效率顾问。你的客户关注如何利用 AI 工具降低成本、提高产出、获取流量和变现，而不关心底层技术实现。
+
+# Task
+分析输入的一组资讯，筛选出对“一人公司”运营最有价值的信息。
+
+# Screening Logic (三层漏斗)
+1. **✅ 必选 (High Value - 应用与SOP):**
+   - **SOP 化:** 包含可直接复制的工作流、提示词框架 (Prompt Framework)、自动化方案。
+   - **业务红利:** 新的流量机会 (如平台算法变更)、新的变现模式、极低成本的获客/生产工具。
+   - **实用技巧:** 能立即提升 AI 输出质量的非代码技巧 (如“煤气灯提示法”)。
+   - **商业警示:** 直接影响个体户账号安全、合规性或资金流的风险。
+
+2. **❌ 必删 (Reject - 纯技术与噪音):**
+   - **开发者视角:** 纯代码实现 (除非是低代码)、架构争论、协议漏洞细节。
+   - **企业级新闻:** 大厂并购、高管变动、财报分析 (除非涉及价格战)。
+   - **宏观噪音:** 政治新闻、学术论文、概念性发布会 (无实物)。
+
+# Output Format
+{
+  "featured_ids": ["record_id_1", "record_id_2"]
+}
+"""
 
 
 def log(msg: str) -> None:
@@ -230,6 +263,51 @@ def response_snippet(resp: requests.Response) -> str:
     except Exception:
         return f"HTTP {resp.status_code}"
     return f"HTTP {resp.status_code}: {truncate_text(text.strip(), 300)}"
+
+
+def _post_with_retries(
+    url: str,
+    headers: Dict[str, str],
+    payload: Dict[str, Any],
+    timeout: int,
+    retries: int,
+    service: str,
+    parse_text,
+) -> Optional[str]:
+    last_err: Optional[Exception] = None
+    last_status_type: Optional[str] = None
+    last_status_detail = ""
+    for attempt in range(retries):
+        try:
+            resp = requests.post(url, headers=headers, json=payload, timeout=timeout)
+            if resp.status_code in (401, 403):
+                notify_auth_failure(service, response_snippet(resp))
+                return None
+            if resp.status_code in (429, 500, 502, 503, 504):
+                last_status_type = "rate_limit" if resp.status_code == 429 else "server_error"
+                last_status_detail = response_snippet(resp)
+                time.sleep(1.2 * (attempt + 1))
+                continue
+            if resp.status_code != 200:
+                return None
+            try:
+                return parse_text(resp)
+            except Exception as exc:
+                notify_parse_error(service, str(exc))
+                return None
+        except Exception as exc:
+            last_err = exc
+            if "timeout" in str(exc).lower():
+                last_status_type = "timeout"
+            time.sleep(1.0 + attempt)
+
+    if last_status_type == "rate_limit":
+        notify_rate_limit(service, last_status_detail or "HTTP 429")
+    elif last_status_type == "server_error":
+        notify_server_error(service, last_status_detail or "HTTP 5xx")
+    elif last_status_type == "timeout":
+        notify_timeout(service, str(last_err) if last_err else "timeout")
+    return None
 
 
 def clean_feishu_value(value: Any) -> str:
@@ -433,6 +511,12 @@ content：{article.get('content','')}
 """
 
 
+def build_featured_prompt(items: List[Dict[str, str]]) -> str:
+    prompt = (config.FEATURED_PROMPT or "").strip() or FEATURED_PROMPT_DEFAULT
+    payload = {"items": items}
+    return f"{prompt}\n\n# Input\n{json.dumps(payload, ensure_ascii=False)}"
+
+
 def extract_json_object(text: str) -> str:
     if not text:
         return ""
@@ -455,6 +539,123 @@ def parse_llm_json(raw_text: str, service: str) -> Optional[Dict[str, Any]]:
     except json.JSONDecodeError as exc:
         notify_parse_error(service, str(exc))
         return None
+
+
+def call_featured_llm(prompt: str) -> Optional[str]:
+    provider = config.LLM_PROVIDER
+    service = f"Featured:{provider}"
+    known = {"openai", "gemini", "iflow", "deepseek", "zhipu", "nvidia"}
+    if not provider:
+        provider = "gemini"
+        service = f"Featured:{provider}"
+    elif provider not in known:
+        log(f"[LLM] unknown provider={provider}, fallback to gemini")
+        provider = "gemini"
+        service = f"Featured:{provider}"
+
+    if provider == "openai":
+        if not config.OPENAI_API_KEY:
+            notify_auth_failure("OpenAI", "missing OPENAI_API_KEY")
+            return None
+        url = f"{config.OPENAI_BASE_URL}/responses"
+        headers = {"Authorization": f"Bearer {config.OPENAI_API_KEY}"}
+        payload = {"model": config.OPENAI_MODEL, "input": prompt}
+
+        def parse_text(resp: requests.Response) -> str:
+            data = resp.json()
+            if isinstance(data.get("output_text"), str):
+                return data.get("output_text", "")
+            outputs = data.get("output") or []
+            parts: List[str] = []
+            if isinstance(outputs, list):
+                for item in outputs:
+                    if isinstance(item, dict):
+                        if isinstance(item.get("text"), str):
+                            parts.append(item["text"])
+                        content = item.get("content") or []
+                        if isinstance(content, list):
+                            for piece in content:
+                                if isinstance(piece, dict) and isinstance(piece.get("text"), str):
+                                    parts.append(piece["text"])
+            return "".join(parts)
+
+        return _post_with_retries(url, headers, payload, config.OPENAI_TIMEOUT, config.OPENAI_RETRIES, service, parse_text)
+
+    if provider == "gemini":
+        if not config.GEMINI_API_KEY:
+            notify_auth_failure("Gemini", "missing GEMINI_API_KEY")
+            return None
+        url = config.GEMINI_API_URL
+        headers = gemini_headers()
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+
+        def parse_text(resp: requests.Response) -> str:
+            data = resp.json()
+            parts = data["candidates"][0]["content"]["parts"]
+            return "".join(p.get("text", "") for p in parts).strip()
+
+        return _post_with_retries(url, headers, payload, config.GEMINI_TIMEOUT, config.GEMINI_RETRIES, service, parse_text)
+
+    if provider == "iflow":
+        if not config.IFLOW_API_KEY:
+            notify_auth_failure("iFlow", "missing IFLOW_API_KEY")
+            return None
+        url = f"{config.IFLOW_BASE_URL}/chat/completions"
+        headers = {"Authorization": f"Bearer {config.IFLOW_API_KEY}"}
+        payload = {"model": config.IFLOW_MODEL, "messages": [{"role": "user", "content": prompt}]}
+
+        def parse_text(resp: requests.Response) -> str:
+            data = resp.json()
+            return data["choices"][0]["message"]["content"]
+
+        return _post_with_retries(url, headers, payload, config.IFLOW_TIMEOUT, config.IFLOW_RETRIES, service, parse_text)
+
+    if provider == "deepseek":
+        if not config.DEEPSEEK_API_KEY:
+            notify_auth_failure("DeepSeek", "missing DEEPSEEK_API_KEY")
+            return None
+        url = f"{config.DEEPSEEK_BASE_URL}/chat/completions"
+        headers = {"Authorization": f"Bearer {config.DEEPSEEK_API_KEY}"}
+        payload = {"model": config.DEEPSEEK_MODEL, "messages": [{"role": "user", "content": prompt}]}
+
+        def parse_text(resp: requests.Response) -> str:
+            data = resp.json()
+            return data["choices"][0]["message"]["content"]
+
+        return _post_with_retries(url, headers, payload, config.DEEPSEEK_TIMEOUT, config.DEEPSEEK_RETRIES, service, parse_text)
+
+    if provider == "zhipu":
+        if not config.ZHIPU_API_KEY:
+            notify_auth_failure("Zhipu", "missing ZHIPU_API_KEY")
+            return None
+        url = f"{config.ZHIPU_BASE_URL}/chat/completions"
+        headers = {"Authorization": f"Bearer {config.ZHIPU_API_KEY}"}
+        payload = {"model": config.ZHIPU_MODEL, "messages": [{"role": "user", "content": prompt}]}
+
+        def parse_text(resp: requests.Response) -> str:
+            data = resp.json()
+            return data["choices"][0]["message"]["content"]
+
+        return _post_with_retries(url, headers, payload, config.ZHIPU_TIMEOUT, config.ZHIPU_RETRIES, service, parse_text)
+
+    if provider == "nvidia":
+        if not config.NVIDIA_API_KEY:
+            notify_auth_failure("NVIDIA", "missing NVIDIA_API_KEY")
+            return None
+        url = "https://integrate.api.nvidia.com/v1/chat/completions"
+        headers = nvidia_headers()
+        payload = {
+            "model": config.QWEN_MODEL_NAME_PRO,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+
+        def parse_text(resp: requests.Response) -> str:
+            data = resp.json()
+            return data["choices"][0]["message"]["content"]
+
+        return _post_with_retries(url, headers, payload, 300, config.NVIDIA_RETRIES, service, parse_text)
+
+    return None
 
 
 def analyze_with_gemini(article: Dict[str, Any]) -> Dict[str, Any]:
@@ -876,6 +1077,21 @@ def parse_featured_ids(raw_text: str, service: str = "Featured") -> List[str]:
     return [str(x) for x in ids if x]
 
 
+def apply_featured(record_ids: List[str], tenant_token: str) -> None:
+    if not record_ids:
+        return
+    for record_id in record_ids:
+        update_bitable_record_fields(
+            config.FEISHU_APP_TOKEN,
+            config.FEISHU_NEWS_TABLE_ID,
+            tenant_token,
+            record_id,
+            {config.NEWS_FIELD_FEATURED: True},
+            config.HTTP_TIMEOUT,
+            config.HTTP_RETRIES,
+        )
+
+
 def build_embedding_text(article: Dict[str, Any], analysis: Dict[str, Any]) -> str:
     title = (analysis.get("title_zh") or article.get("title") or "").strip()
     one_liner = (analysis.get("one_liner") or "").strip()
@@ -1149,6 +1365,302 @@ def prefetch_recent_item_keys(tenant_token: str) -> set:
         if key:
             keys.add(key)
     return keys
+
+
+def split_sources_and_queue(
+    sources: List[Dict[str, Any]],
+    existing_keys: set,
+    tenant_token: str,
+) -> tuple[list, dict, dict]:
+    queue: List[Dict[str, Any]] = []
+    source_states: Dict[str, Dict[str, Any]] = {}
+    stats = {
+        "sources_processed": 0,
+        "sources_skipped": 0,
+        "entries_fetched": 0,
+        "queue_total": 0,
+    }
+
+    for source in sources:
+        if not source.get("feed_url"):
+            stats["sources_skipped"] += 1
+            continue
+
+        now_ms = int(time.time() * 1000)
+        if not source.get("enabled"):
+            update_bitable_record_fields(
+                config.FEISHU_APP_TOKEN,
+                config.FEISHU_RSS_TABLE_ID,
+                tenant_token,
+                source["record_id"],
+                {
+                    config.RSS_FIELD_STATUS: config.STATUS_IDLE,
+                },
+                config.HTTP_TIMEOUT,
+                config.HTTP_RETRIES,
+            )
+            stats["sources_skipped"] += 1
+            continue
+
+        if not should_fetch(source, now_ms):
+            stats["sources_skipped"] += 1
+            continue
+
+        last_item_pub_time = source.get("last_item_pub_time") or 0
+        cutoff_ms = last_item_pub_time or (source.get("last_fetch_time") or 0)
+        consecutive_fail = source.get("consecutive_fail_count") or 0
+
+        try:
+            log(f"[RSS] fetching {source.get('name') or source.get('feed_url')}")
+            feed = fetch_feed(source["feed_url"], config.HTTP_TIMEOUT, config.HTTP_RETRIES, headers={"User-Agent": "NewsDataRSS/1.0"})
+        except Exception as exc:
+            fail_count = consecutive_fail + 1
+            status = derive_overall_status(fail_count, True)
+            fetch_status = derive_fetch_status(exc)
+            update_bitable_record_fields(
+                config.FEISHU_APP_TOKEN,
+                config.FEISHU_RSS_TABLE_ID,
+                tenant_token,
+                source["record_id"],
+                {
+                    config.RSS_FIELD_STATUS: status,
+                    config.RSS_FIELD_LAST_FETCH_STATUS: fetch_status,
+                    config.RSS_FIELD_CONSECUTIVE_FAIL_COUNT: fail_count,
+                    config.RSS_FIELD_LAST_FETCH_TIME: now_ms,
+                },
+                config.HTTP_TIMEOUT,
+                config.HTTP_RETRIES,
+            )
+            log(f"[RSS] fetch failed {source['feed_url']}: {exc}")
+            stats["sources_skipped"] += 1
+            continue
+
+        entries = feed.entries or []
+        log(f"[RSS] fetched entries={len(entries)} for {source.get('name') or source.get('feed_url')}")
+        stats["entries_fetched"] += len(entries)
+        if config.MAX_ENTRIES_PER_FEED and len(entries) > config.MAX_ENTRIES_PER_FEED:
+            entries = entries[: config.MAX_ENTRIES_PER_FEED]
+
+        failed_items = parse_failed_items(source.get("failed_items"))
+        entry_map: Dict[str, Dict[str, Any]] = {}
+        for entry in entries:
+            entry_key = build_item_key(entry, source.get("item_id_strategy"), source.get("content_hash_algo"))
+            if entry_key:
+                entry_map[entry_key] = entry
+
+        latest_pub_ms = 0
+        latest_key = ""
+        processed_keys: set = set()
+        updated_failed_items: List[Dict[str, Any]] = []
+
+        if failed_items:
+            retry_budget = config.FAILED_ITEMS_RETRY_LIMIT
+            for item in failed_items:
+                item_key = item.get("item_key") or ""
+                if not item_key:
+                    continue
+                entry = entry_map.get(item_key)
+                if entry is None:
+                    item["miss_count"] = int(item.get("miss_count") or 0) + 1
+                    item["last_seen_ms"] = now_ms
+                    updated_failed_items.append(item)
+                    continue
+                if item_key in existing_keys:
+                    processed_keys.add(item_key)
+                    continue
+                if retry_budget <= 0:
+                    updated_failed_items.append(item)
+                    continue
+                retry_budget -= 1
+
+                entry_ts = entry_published_ts(entry)
+                entry_ts_ms = entry_ts * 1000 if entry_ts else 0
+                article = {
+                    "title": entry.get("title") or "",
+                    "content": entry_text_content(entry),
+                    "link": entry.get("link") or "",
+                    "published": entry_ts,
+                    "source": source.get("name") or source.get("feed_url"),
+                }
+
+                queue.append(
+                    {
+                        "source_id": source["record_id"],
+                        "item_key": item_key,
+                        "article": article,
+                        "entry_ts": entry_ts,
+                        "entry_ts_ms": entry_ts_ms,
+                        "from_failed": True,
+                    }
+                )
+                processed_keys.add(item_key)
+
+                if entry_ts_ms > latest_pub_ms:
+                    latest_pub_ms = entry_ts_ms
+                    latest_key = item_key
+
+        for entry in entries:
+            entry_ts = entry_published_ts(entry)
+            entry_ts_ms = entry_ts * 1000 if entry_ts else 0
+            if entry_ts_ms and cutoff_ms and entry_ts_ms <= cutoff_ms:
+                continue
+
+            item_key = build_item_key(entry, source.get("item_id_strategy"), source.get("content_hash_algo"))
+            if not item_key:
+                continue
+            if item_key in processed_keys:
+                continue
+            if item_key in existing_keys:
+                continue
+
+            article = {
+                "title": entry.get("title") or "",
+                "content": entry_text_content(entry),
+                "link": entry.get("link") or "",
+                "published": entry_ts,
+                "source": source.get("name") or source.get("feed_url"),
+            }
+
+            queue.append(
+                {
+                    "source_id": source["record_id"],
+                    "item_key": item_key,
+                    "article": article,
+                    "entry_ts": entry_ts,
+                    "entry_ts_ms": entry_ts_ms,
+                    "from_failed": False,
+                }
+            )
+
+            if entry_ts_ms > latest_pub_ms:
+                latest_pub_ms = entry_ts_ms
+                latest_key = item_key
+
+        source_states[source["record_id"]] = {
+            "source": source,
+            "now_ms": now_ms,
+            "latest_pub_ms": latest_pub_ms,
+            "latest_key": latest_key,
+            "updated_failed_items": updated_failed_items,
+            "new_count": 0,
+        }
+        stats["sources_processed"] += 1
+
+    stats["queue_total"] = len(queue)
+    return queue, source_states, stats
+
+
+def run_llm_queue(
+    queue: List[Dict[str, Any]],
+    source_states: Dict[str, Dict[str, Any]],
+    tenant_token: str,
+    existing_keys: set,
+    featured_candidates: List[Dict[str, str]],
+    stats: Dict[str, int],
+) -> None:
+    total = len(queue)
+    if total <= 0:
+        log("[LLM] queue empty")
+        return
+
+    lock = threading.Lock()
+
+    def handle_item(item: Dict[str, Any]) -> None:
+        state = source_states[item["source_id"]]
+        article = item["article"]
+        analysis = analyze_with_llm(article)
+        categories = analysis.get("categories") or []
+        if isinstance(categories, list) and any(c in FAILED_CATEGORIES for c in categories):
+            with lock:
+                stats["llm_failed"] += 1
+                upsert_failed_item(
+                    state["updated_failed_items"],
+                    item["item_key"],
+                    item["entry_ts_ms"],
+                    article.get("title") or "",
+                    article.get("link") or "",
+                    "llm_failed",
+                    state["now_ms"],
+                )
+            return
+
+        with lock:
+            stats["llm_success"] += 1
+
+        score = float(analysis.get("score", 0.0) or 0.0)
+        emb_vec = None
+        if score >= config.FEISHU_MIN_SCORE:
+            if config.ENABLE_VECTORIZE_DEDUP:
+                embed_text = build_embedding_text(article, analysis)
+                emb_vec = cf_embed_text(embed_text)
+                if emb_vec:
+                    best_sim = vectorize_query(emb_vec)
+                    if best_sim is not None and best_sim >= config.CF_VECTORIZE_SIM_THRESHOLD:
+                        log(f"[Vectorize] skip similar={best_sim:.3f} title={article.get('title','')}")
+                        with lock:
+                            existing_keys.add(item["item_key"])
+                            stats["vectorize_skipped"] += 1
+                        return
+                else:
+                    log("[Vectorize] embedding unavailable, fallback to exact dedup only")
+
+            fields = build_news_fields(article, analysis, item["item_key"])
+            ok, record_id = create_bitable_record_with_id(
+                config.FEISHU_APP_TOKEN,
+                config.FEISHU_NEWS_TABLE_ID,
+                tenant_token,
+                fields,
+                config.HTTP_TIMEOUT,
+                config.HTTP_RETRIES,
+            )
+            if not ok:
+                with lock:
+                    stats["feishu_create_failed"] += 1
+            else:
+                if config.ENABLE_VECTORIZE_DEDUP and emb_vec:
+                    metadata = {
+                        "title": article.get("title") or "",
+                        "source": article.get("source") or "",
+                        "published": item.get("entry_ts") or 0,
+                    }
+                    vectorize_upsert(item["item_key"], emb_vec, metadata)
+                if record_id:
+                    with lock:
+                        featured_candidates.append(
+                            {
+                                "record_id": record_id,
+                                "title": clean_feishu_value(fields.get(config.NEWS_FIELD_TITLE)).strip(),
+                                "summary": clean_feishu_value(fields.get(config.NEWS_FIELD_SUMMARY)).strip(),
+                            }
+                        )
+
+        with lock:
+            existing_keys.add(item["item_key"])
+            stats["entries_processed"] += 1
+            stats["entries_new"] += 1
+            state["new_count"] += 1
+
+    done = 0
+    with ThreadPoolExecutor(max_workers=config.LLM_CONCURRENCY) as executor:
+        futures = [executor.submit(handle_item, item) for item in queue]
+        for future in as_completed(futures):
+            try:
+                future.result()
+            except Exception as exc:
+                with lock:
+                    stats["llm_failed"] += 1
+                log(f"[LLM] task failed: {exc}")
+            done += 1
+            bar = render_progress(done, total, width=config.PROGRESS_BAR_WIDTH)
+            msg = f"[LLM] {bar} ok={stats['llm_success']} fail={stats['llm_failed']}"
+            if sys.stdout.isatty():
+                sys.stdout.write("\r" + msg)
+                sys.stdout.flush()
+            else:
+                log(msg)
+        if sys.stdout.isatty():
+            sys.stdout.write("\n")
+            sys.stdout.flush()
 
 
 def process_source(
@@ -1448,8 +1960,72 @@ def main() -> None:
     except Exception as exc:
         log(f"[Dedup] prefetch failed: {exc}")
         existing_keys = set()
-    for source in enabled_sources:
-        process_source(source, tenant_token, existing_keys)
+
+    queue, source_states, fetch_stats = split_sources_and_queue(enabled_sources, existing_keys, tenant_token)
+    stats = {
+        "llm_success": 0,
+        "llm_failed": 0,
+        "feishu_create_failed": 0,
+        "entries_processed": 0,
+        "entries_new": 0,
+        "vectorize_skipped": 0,
+    }
+    stats.update(fetch_stats)
+    log(f"[Queue] total={stats['queue_total']} sources_processed={stats['sources_processed']} sources_skipped={stats['sources_skipped']}")
+
+    featured_candidates: List[Dict[str, str]] = []
+    run_llm_queue(queue, source_states, tenant_token, existing_keys, featured_candidates, stats)
+
+    for state in source_states.values():
+        source = state["source"]
+        update_fields: Dict[str, Any] = {
+            config.RSS_FIELD_STATUS: config.STATUS_OK,
+            config.RSS_FIELD_LAST_FETCH_STATUS: config.FETCH_STATUS_SUCCESS,
+            config.RSS_FIELD_CONSECUTIVE_FAIL_COUNT: 0,
+            config.RSS_FIELD_LAST_FETCH_TIME: state["now_ms"],
+            config.RSS_FIELD_FAILED_ITEMS: serialize_failed_items(prune_failed_items(state["updated_failed_items"], state["now_ms"])),
+        }
+        if state["latest_pub_ms"]:
+            update_fields[config.RSS_FIELD_LAST_ITEM_PUB_TIME] = state["latest_pub_ms"]
+        if state["latest_key"]:
+            update_fields[config.RSS_FIELD_LAST_ITEM_GUID] = state["latest_key"]
+
+        update_bitable_record_fields(
+            config.FEISHU_APP_TOKEN,
+            config.FEISHU_RSS_TABLE_ID,
+            tenant_token,
+            source["record_id"],
+            update_fields,
+            config.HTTP_TIMEOUT,
+            config.HTTP_RETRIES,
+        )
+        log(f"[RSS] {source.get('name') or source.get('feed_url')} new={state['new_count']}")
+
+    if featured_candidates:
+        log(f"[Featured] candidates={len(featured_candidates)} ids={[c.get('record_id') for c in featured_candidates]}")
+        prompt = build_featured_prompt(featured_candidates)
+        raw_text = call_featured_llm(prompt)
+        if not raw_text:
+            log("[Featured] empty response")
+        else:
+            featured_ids = parse_featured_ids(raw_text)
+            log(f"[Featured] selected_ids={featured_ids}")
+            if featured_ids:
+                apply_featured(featured_ids, tenant_token)
+
+    log(
+        "[Summary] "
+        f"sources_done={stats['sources_processed']} "
+        f"sources_skipped={stats['sources_skipped']} "
+        f"entries_fetched={stats['entries_fetched']} "
+        f"queue_total={stats['queue_total']} "
+        f"processed={stats['entries_processed']} "
+        f"new={stats['entries_new']} "
+        f"llm_ok={stats['llm_success']} "
+        f"llm_failed={stats['llm_failed']} "
+        f"feishu_failed={stats['feishu_create_failed']} "
+        f"vectorize_skipped={stats['vectorize_skipped']}"
+    )
 
 
 if __name__ == "__main__":

@@ -209,3 +209,26 @@ def create_bitable_record(
         print(f"[Feishu] create record error: {data}", flush=True)
         return False
     return True
+
+
+def create_bitable_record_with_id(
+    app_token: str,
+    table_id: str,
+    tenant_token: str,
+    fields: Dict[str, Any],
+    timeout: int,
+    retries: int,
+) -> tuple[bool, Optional[str]]:
+    url = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records"
+    headers = {
+        "Authorization": f"Bearer {tenant_token}",
+        "Content-Type": "application/json; charset=utf-8",
+    }
+    body = {"fields": fields}
+    resp = http_post(url, headers, body, timeout, retries)
+    data = resp.json()
+    if data.get("code") != 0:
+        print(f"[Feishu] create record error: {data}", flush=True)
+        return False, None
+    record = (data.get("data") or {}).get("record") or {}
+    return True, record.get("record_id")
