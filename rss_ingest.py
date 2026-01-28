@@ -860,6 +860,22 @@ def build_summary(one_liner: str, points: List[str]) -> str:
     return ""
 
 
+def parse_featured_ids(raw_text: str, service: str = "Featured") -> List[str]:
+    json_str = extract_json_object(raw_text)
+    if not json_str:
+        notify_parse_error(service, "empty json")
+        return []
+    try:
+        data = json.loads(json_str)
+    except json.JSONDecodeError as exc:
+        notify_parse_error(service, str(exc))
+        return []
+    ids = data.get("featured_ids") or []
+    if not isinstance(ids, list):
+        return []
+    return [str(x) for x in ids if x]
+
+
 def build_embedding_text(article: Dict[str, Any], analysis: Dict[str, Any]) -> str:
     title = (analysis.get("title_zh") or article.get("title") or "").strip()
     one_liner = (analysis.get("one_liner") or "").strip()
