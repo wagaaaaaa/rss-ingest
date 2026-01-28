@@ -20,6 +20,8 @@ def load_env_file(path: Path) -> None:
 BASE_DIR = Path(__file__).resolve().parent
 
 # Local env file support (optional)
+load_env_file(BASE_DIR / "rss-ingest-local.env")
+load_env_file(Path(r"F:\coding\rss-ingest-local\rss-ingest-local.env"))
 load_env_file(Path(r"F:\coding\local.env"))
 load_env_file(Path(r"F:\coding\.env"))
 
@@ -31,10 +33,14 @@ FEISHU_APP_TOKEN = os.getenv("FEISHU_APP_TOKEN", "")
 FEISHU_NEWS_TABLE_ID = os.getenv("FEISHU_NEWS_TABLE_ID", "")
 FEISHU_RSS_TABLE_ID = os.getenv("FEISHU_RSS_TABLE_ID", "")
 FEISHU_NOTIFY_TABLE_ID = os.getenv("FEISHU_NOTIFY_TABLE_ID", "")
+FEISHU_WEBHOOK_URL = os.getenv("FEISHU_WEBHOOK_URL", "")
 
 # Gemini
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-3-flash-preview")
+# Per-task overrides (optional)
+GEMINI_MODEL_NAME_SUMMARY = os.getenv("GEMINI_MODEL_NAME_SUMMARY", GEMINI_MODEL_NAME)
+GEMINI_MODEL_NAME_PRO = os.getenv("GEMINI_MODEL_NAME_PRO", GEMINI_MODEL_NAME)
 GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_NAME}:generateContent"
 
 # Cloudflare Vectorize + Workers AI
@@ -57,6 +63,8 @@ NEWS_FIELD_SOURCE = "来源"
 NEWS_FIELD_FULL_CONTENT = "全文"
 NEWS_FIELD_ITEM_KEY = "item_key"
 NEWS_FIELD_CREATED_TIME = "创建时间"
+NEWS_FIELD_FEATURED = "精选"
+NEWS_FIELD_READ = "已读"
 
 # RSS 源表字段
 RSS_FIELD_NAME = "name"
@@ -99,7 +107,7 @@ CONTENT_LANGUAGE_OPTIONS = {"zh", "en", "jp", "mixed", "other"}
 HTTP_TIMEOUT = 20
 HTTP_RETRIES = 3
 
-GEMINI_TIMEOUT = 60
+GEMINI_TIMEOUT = 180
 GEMINI_RETRIES = 10
 FEISHU_MIN_SCORE = 6.0
 FAILED_ITEMS_MAX = int(os.getenv("FAILED_ITEMS_MAX", "50"))
@@ -142,3 +150,6 @@ NOTIFY_FIELD_TRIGGER_TIME = os.getenv("NOTIFY_FIELD_TRIGGER_TIME", "触发时间
 NOTIFY_FIELD_NOTIFIED = os.getenv("NOTIFY_FIELD_NOTIFIED", "已通知")
 
 SYSTEM_PROMPT_OVERRIDE = os.getenv("SYSTEM_PROMPT_OVERRIDE", "")
+DEEP_ANALYSIS_PROMPT_OVERRIDE = os.getenv("DEEP_ANALYSIS_PROMPT_OVERRIDE", "")
+LLM_CONCURRENCY = int(os.getenv("LLM_CONCURRENCY", "4"))
+PROGRESS_BAR_WIDTH = int(os.getenv("PROGRESS_BAR_WIDTH", "20"))

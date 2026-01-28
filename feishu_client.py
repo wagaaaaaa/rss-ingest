@@ -209,3 +209,57 @@ def create_bitable_record(
         print(f"[Feishu] create record error: {data}", flush=True)
         return False
     return True
+
+
+def create_bitable_record_with_id(
+    app_token: str,
+    table_id: str,
+    tenant_token: str,
+    fields: Dict[str, Any],
+    timeout: int,
+    retries: int,
+) -> Tuple[bool, Optional[str]]:
+    url = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records"
+    headers = {
+        "Authorization": f"Bearer {tenant_token}",
+        "Content-Type": "application/json; charset=utf-8",
+    }
+    body = {"fields": fields}
+    resp = http_post(url, headers, body, timeout, retries)
+    data = resp.json()
+    if data.get("code") != 0:
+        print(f"[Feishu] create record error: {data}", flush=True)
+        return False, None
+    record = (data.get("data") or {}).get("record") or {}
+    return True, record.get("record_id")
+
+
+def send_feishu_webhook(webhook_url: str, text: str, timeout: int, retries: int) -> bool:
+    headers = {"Content-Type": "application/json"}
+    body = {"msg_type": "text", "content": {"text": text}}
+    resp = http_post(webhook_url, headers, body, timeout, retries)
+    data = resp.json()
+    return data.get("code", 0) == 0
+
+
+def send_feishu_webhook_post(webhook_url: str, title: str, link: str, content_text: str, timeout: int, retries: int) -> bool:
+    headers = {"Content-Type": "application/json"}
+    content_blocks = []
+    if content_text:
+        content_blocks.append([{"tag": "text", "text": content_text}])
+    if link:
+        content_blocks.append([{"tag": "a", "text": "原文链接", "href": link}])
+    body = {
+        "msg_type": "post",
+        "content": {
+            "post": {
+                "zh_cn": {
+                    "title": title,
+                    "content": content_blocks,
+                }
+            }
+        },
+    }
+    resp = http_post(webhook_url, headers, body, timeout, retries)
+    data = resp.json()
+    return data.get("code", 0) == 0

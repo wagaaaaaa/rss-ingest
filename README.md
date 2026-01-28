@@ -123,7 +123,9 @@
 | :--- | :--- |
 | `LLM_PROVIDER` | `gemini` |
 | `GEMINI_API_KEY` | [点击前往 Google AI Studio 获取 Key](https://aistudio.google.com/app/apikey) |
-| `GEMINI_MODEL_NAME` | *(选填)* 默认为 `gemini-3-flash-preview` (处理长文本速度极快) |
+| `GEMINI_MODEL_NAME` | *(??)* ??????? |
+| `GEMINI_MODEL_NAME_SUMMARY` | *(??)* ????????? `GEMINI_MODEL_NAME` |
+| `GEMINI_MODEL_NAME_PRO` | *(??)* ??/????????? `GEMINI_MODEL_NAME` |
 
 ---
 
@@ -234,6 +236,20 @@
 
 ---
 
+### ?? LLM ???? (Parallel LLM)
+
+**?????**
+| ??? | ??? | ?? |
+| :--- | :--- | :--- |
+| `LLM_CONCURRENCY` | `4` | LLM ??????????? |
+| `PROGRESS_BAR_WIDTH` | `20` | ?????????? |
+
+**???**
+- ????????????????? LLM?
+- ?????????????/?????
+
+---
+
 ### 🧹 智能去重 (Smart Deduplication)
 
 **这是一个可选的高级功能。**
@@ -276,3 +292,29 @@ A: 99% 的原因有两个：
 
 ---
 *Created by 阿菜 - 让信息获取更高效。*
+
+---
+
+### ⭐ 精选自动筛选 (Featured)
+
+本地运行时，系统会在每次抓取+AI 处理完成后，对本次新增记录执行“精选”筛选：
+- 只对新增记录勾选“精选”，不会自动取消已勾选记录。
+- 依赖新闻表中的字段“精选”为勾选框 (Checkbox)。
+- 输出格式仅使用 `featured_ids`（记录 ID 列表）。
+
+---
+
+### 🧠 精选深度分析 (Deep Analysis)
+
+**功能：** 每天定时读取“精选”记录，用“全文”生成「总结 + 深度思考」，并通过飞书 Webhook 推送。
+
+**配置：**
+- `FEISHU_WEBHOOK_URL`：飞书群机器人 webhook
+- (可选) `DEEP_ANALYSIS_PROMPT_OVERRIDE`：自定义深度分析提示词
+
+**手动运行：**
+```
+python deep_analysis.py --hours 12 --limit 20
+```
+
+**定时建议：** 每天 08:00 和 20:00 运行一次。
