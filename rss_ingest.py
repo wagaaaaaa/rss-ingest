@@ -1414,10 +1414,12 @@ def should_fetch(source: Dict[str, Any], now_ms: int) -> bool:
     if not source.get("enabled"):
         return False
     interval_min = config.DEFAULT_FETCH_INTERVAL_MIN
+    last_item_pub = source.get("last_item_pub_time") or 0
     last_fetch = source.get("last_fetch_time") or 0
-    if last_fetch <= 0:
+    last_base = last_item_pub or last_fetch
+    if last_base <= 0:
         return True
-    return now_ms - last_fetch >= interval_min * 60 * 1000
+    return now_ms - last_base >= interval_min * 60 * 1000
 
 
 def build_news_fields(article: Dict[str, Any], analysis: Dict[str, Any], item_key: str) -> Dict[str, Any]:
